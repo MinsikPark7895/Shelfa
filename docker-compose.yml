@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  ros2:
+    build:
+      context: ./ros2_ws
+      dockerfile: Dockerfile
+    container_name: ros2_core
+    privileged: true # 카메라 등 하드웨어 장치 접근을 위해 필수
+    network_mode: host # ROS 2 DDS 통신을 위해 호스트 네트워크 사용 권장
+    volumes:
+      - /dev:/dev # 로봇 시리얼 연결, 웹캠 등 USB 장치 마운트
+      - ./ros2_ws/src:/ros2_ws/src # 로컬 코드 변경을 컨테이너에 즉시 반영
+    stdin_open: true
+    tty: true
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: shelfa_backend
+    network_mode: host # ROS 2 컨테이터(로봇/비전)와 통신하기 위해 동일 네트워크 사용
+    volumes:
+      - ./backend:/app # 로컬 코드 변경을 컨테이너에 즉시 반영
+    # 백엔드 파이썬 서버 코드가 작성되면 아래 주석을 해체하고 알맞게 수정하세요.
+    # command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    stdin_open: true
+    tty: true    
+
