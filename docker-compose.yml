@@ -24,8 +24,11 @@ services:
       - postgres
       - chromadb
       - mqtt
+      - redis
     volumes:
       - ./backend:/app # 로컬 코드 변경을 컨테이너에 즉시 반영
+    env_file:
+      - .env
     # 백엔드 파이썬 서버 코드가 작성되면 아래 주석을 해체하고 알맞게 수정하세요.
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     stdin_open: true
@@ -36,9 +39,9 @@ services:
     container_name: shelfa_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: shelfa_user
-      POSTGRES_PASSWORD: shelfa_password
-      POSTGRES_DB: shelfa_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
@@ -65,8 +68,18 @@ services:
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
 
+  redis:
+    image: redis:alpine
+    container_name: shelfa_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
 volumes:
   postgres_data:
   chromadb_data:
   mosquitto_data:
   mosquitto_log:
+  redis_data:

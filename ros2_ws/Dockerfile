@@ -17,12 +17,12 @@ WORKDIR /ros2_ws
 COPY src /ros2_ws/src
 
 # ROS 패키지 의존성 자동 설치 및 워크스페이스 빌드
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && \
+RUN apt-get update && /bin/bash -c "source /opt/ros/humble/setup.bash && \
     rosdep init || true && \
     rosdep update && \
     rosdep install -i --from-path src --rosdistro humble -y && \
-    colcon build --symlink-install"
-
+    colcon build --symlink-install" && \
+    rm -rf /var/lib/apt/lists/*
 # 컨테이너 진입점 설정
 RUN echo '#!/bin/bash\n\
 source /opt/ros/humble/setup.bash\n\
