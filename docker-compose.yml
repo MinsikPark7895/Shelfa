@@ -20,10 +20,66 @@ services:
       dockerfile: Dockerfile
     container_name: shelfa_backend
     network_mode: host # ROS 2 컨테이터(로봇/비전)와 통신하기 위해 동일 네트워크 사용
+    depends_on:
+      - postgres
+      - chromadb
+      - mqtt
+      - redis
     volumes:
       - ./backend:/app # 로컬 코드 변경을 컨테이너에 즉시 반영
+    env_file:
+      - .env
     # 백엔드 파이썬 서버 코드가 작성되면 아래 주석을 해체하고 알맞게 수정하세요.
-    # command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     stdin_open: true
     tty: true    
 
+  postgres:
+    image: postgres:15
+    container_name: shelfa_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: shelfa_chromadb
+    restart: unless-stopped
+    ports:
+      - "8080:8000" # FastAPI(8000)와 충돌하지 않도록 호스트의 8080으로 포워딩
+    volumes:
+      - chromadb_data:/chroma/chroma
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: shelfa_mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
+  redis:
+    image: redis:alpine
+    container_name: shelfa_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  chromadb_data:
+  mosquitto_data:
+  mosquitto_log:
+  redis_data:
