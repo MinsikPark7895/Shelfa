@@ -1,0 +1,54 @@
+name: CI/CD to GCP
+
+on:
+  push:
+    branches:
+      - main
+      - dev-Backend
+      - dev-Frontend
+      - dev-Robot
+
+jobs:
+  test:
+    name: Fast CI (Syntax Check)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8
+          
+      - name: Lint with flake8
+        run: |
+          # 파이썬 문법 에러 및 정의되지 않은 변수 등의 치명적인 에러만 빠르게 잡아냅니다 (약 10초 소요)
+          flake8 backend/ --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  deploy:
+    name: CD to GCP
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.GCP_HOST }}
+          username: ${{ secrets.GCP_USERNAME }}
+          key: ${{ secrets.GCP_SSH_KEY }}
+          script: |
+            # 서버 내부 작업
+            cd ~/Shelfa
+            # 저장소 최신화
+            git fetch --all
+            git checkout ${{ github.ref_name }}
+            git pull origin ${{ github.ref_name }}
+            # 도커 백그라운드 재시작 (변경된 이미지만 다시 빌드)
+            sudo docker-compose up -d --build
