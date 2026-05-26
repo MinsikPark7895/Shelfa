@@ -43,9 +43,13 @@ RUN apt-get update && \
 # 이제 진짜 소스코드를 복사합니다. (코드 수정 시 여기서부터만 재실행됨)
 COPY src /ros2_ws/src
 
-# ROS 패키지 빌드 (저사양 클라우드 서버에서 메모리 초과/다운 방지를 위해 순차적 빌드 옵션 추가)
+# ROS 패키지 빌드 1단계: 가장 무겁고 50분이나 걸리는 dsr_msgs2까지만 먼저 빌드해서 '세이브 포인트'를 만듭니다.
+# (이 단계가 성공하면 도커가 결과를 영구 캐시하므로, 다음번에 튕기더라도 50분을 절약합니다!)
 RUN mkdir -p /ros2_ws/src/doosan-robot2/dsr_common2/include && \
-    /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --executor sequential --parallel-workers 1"
+    /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-up-to dsr_msgs2 --executor sequential --parallel-workers 1"
+
+# ROS 패키지 빌드 2단계: 나머지 패키지들을 이어서 빌드합니다.
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --executor sequential --parallel-workers 1"
 # 컨테이너 진입점 설정
 RUN echo '#!/bin/bash\n\
 source /opt/ros/humble/setup.bash\n\

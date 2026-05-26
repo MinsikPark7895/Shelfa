@@ -43,7 +43,7 @@ jobs:
           host: ${{ secrets.GCP_HOST }}
           username: ${{ secrets.GCP_USERNAME }}
           key: ${{ secrets.GCP_SSH_KEY }}
-          command_timeout: 60m
+          command_timeout: 120m
           script: |
             # 서버 내부 작업
             cd ~/Shelfa
