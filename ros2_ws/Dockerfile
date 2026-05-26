@@ -29,8 +29,9 @@ RUN apt-get update && \
 # 이제 진짜 소스코드를 복사합니다. (코드 수정 시 여기서부터만 재실행됨)
 COPY src /ros2_ws/src
 
-# ROS 패키지 빌드 (바로가기 오류를 막기 위해 --symlink-install 제거)
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build"
+# ROS 패키지 빌드 (빈 include 폴더가 없어서 CMake가 에러를 내는 것을 방지)
+RUN mkdir -p /ros2_ws/src/doosan-robot2/dsr_common2/include && \
+    /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build"
 # 컨테이너 진입점 설정
 RUN echo '#!/bin/bash\n\
 source /opt/ros/humble/setup.bash\n\
