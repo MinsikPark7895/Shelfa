@@ -1,3 +1,19 @@
+# ==========================================
+# 1단계: 의존성 캐싱을 위한 파일 추출 (Cacher)
+# ==========================================
+FROM ubuntu:jammy AS cacher
+
+# 전체 소스코드를 임시 폴더로 복사합니다.
+COPY src /tmp/src
+
+# 빌드 의존성 분석에 필요한 package.xml 파일들만 추출해서 /pkg_xmls 에 모아둡니다.
+# (이 단계를 거쳐야 C++ 파이썬 코드가 변경되어도 rosdep 설치가 캐시됩니다!)
+RUN mkdir -p /pkg_xmls && \
+    cd /tmp && find src -name "package.xml" -exec cp --parents {} /pkg_xmls/ \;
+
+# ==========================================
+# 2단계: 실제 ROS 2 환경 구축 (Builder)
+# ==========================================
 # ROS 2 버전에 맞게 수정 가능 (예: foxy, humble 등)
 FROM osrf/ros:humble-desktop
 
@@ -13,13 +29,11 @@ RUN apt-get update && apt-get install -y \
 # 작업 디렉토리 설정
 WORKDIR /ros2_ws
 
-# [최적화 마법] 패키지 의존성 파일(package.xml)들만 먼저 복사합니다.
-# 이렇게 하면 파이썬/C++ 코드가 바뀌어도 이 단계는 캐시(Cache)가 유지됩니다!
-COPY src /tmp/src
-RUN mkdir -p /ros2_ws/src && \
-    cd /tmp && find src -name "package.xml" -exec cp --parents {} /ros2_ws/ \;
+# 1단계(cacher)에서 추출해둔 package.xml 파일들만 먼저 복사합니다.
+# 소스코드가 바뀌어도 package.xml 내용이 같다면 도커가 이 단계부터는 캐시를 사용합니다!
+COPY --from=cacher /pkg_xmls/src /ros2_ws/src
 
-# 의존성 패키지(Gazebo 등) 다운로드 및 설치 (이 엄청난 작업이 통째로 영구 저장됩니다)
+# 의존성 패키지(Gazebo 등) 다운로드 및 설치 (캐시 적용됨)
 RUN apt-get update && \
     rosdep init || true && \
     rosdep update && \
