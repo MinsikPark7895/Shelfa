@@ -51,4 +51,4 @@ jobs:
             git checkout ${{ github.ref_name }}
             git pull origin ${{ github.ref_name }}
             # 도커 백그라운드 재시작 (변경된 이미지만 다시 빌드)
-            sudo docker-compose up -d --build
+            docker-compose up -d --build
