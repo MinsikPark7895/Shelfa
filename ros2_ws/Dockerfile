@@ -43,9 +43,9 @@ RUN apt-get update && \
 # 이제 진짜 소스코드를 복사합니다. (코드 수정 시 여기서부터만 재실행됨)
 COPY src /ros2_ws/src
 
-# ROS 패키지 빌드 (빈 include 폴더가 없어서 CMake가 에러를 내는 것을 방지)
+# ROS 패키지 빌드 (저사양 클라우드 서버에서 메모리 초과/다운 방지를 위해 순차적 빌드 옵션 추가)
 RUN mkdir -p /ros2_ws/src/doosan-robot2/dsr_common2/include && \
-    /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build"
+    /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --executor sequential --parallel-workers 1"
 # 컨테이너 진입점 설정
 RUN echo '#!/bin/bash\n\
 source /opt/ros/humble/setup.bash\n\
