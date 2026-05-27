@@ -51,5 +51,10 @@ jobs:
             git fetch --all
             git checkout ${{ github.ref_name }}
             git pull origin ${{ github.ref_name }}
+            
+            # 도커 빌드킷(BuildKit)을 명시적으로 활성화하여 캐시 마운트 기능 켜기
+            export DOCKER_BUILDKIT=1
+            export COMPOSE_DOCKER_CLI_BUILD=1
+            
             # 도커 백그라운드 재시작 (변경된 이미지만 다시 빌드)
             docker-compose up -d --build
