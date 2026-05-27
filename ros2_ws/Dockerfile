@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ==========================================
 # 1단계: 의존성 캐싱을 위한 파일 추출 (Cacher)
 # ==========================================
@@ -44,12 +45,17 @@ RUN apt-get update && \
 COPY src /ros2_ws/src
 
 # ROS 패키지 빌드 1단계: 가장 무겁고 50분이나 걸리는 dsr_msgs2까지만 먼저 빌드해서 '세이브 포인트'를 만듭니다.
-# (이 단계가 성공하면 도커가 결과를 영구 캐시하므로, 다음번에 튕기더라도 50분을 절약합니다!)
-RUN mkdir -p /ros2_ws/src/doosan-robot2/dsr_common2/include && \
+# (BuildKit 캐시 마운트를 사용하여 이전 빌드의 찌꺼기 파일(build 폴더)을 재사용합니다!)
+RUN --mount=type=cache,target=/ros2_ws/build \
+    --mount=type=cache,target=/ros2_ws/log \
+    mkdir -p /ros2_ws/src/doosan-robot2/dsr_common2/include && \
     /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-up-to dsr_msgs2 --executor sequential --parallel-workers 1"
 
 # ROS 패키지 빌드 2단계: 나머지 패키지들을 이어서 빌드합니다.
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --executor sequential --parallel-workers 1"
+# (마찬가지로 캐시 마운트를 사용하여 수정된 파일만 1초 만에 빌드합니다!)
+RUN --mount=type=cache,target=/ros2_ws/build \
+    --mount=type=cache,target=/ros2_ws/log \
+    /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --executor sequential --parallel-workers 1"
 # 컨테이너 진입점 설정
 RUN echo '#!/bin/bash\n\
 source /opt/ros/humble/setup.bash\n\
