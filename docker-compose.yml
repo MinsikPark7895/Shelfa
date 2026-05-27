@@ -21,6 +21,8 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
     depends_on:
       - backend
 
@@ -86,6 +88,16 @@ services:
       - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
+
+  certbot:
+    image: certbot/certbot
+    container_name: shelfa_certbot
+    restart: unless-stopped
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    # 매 12시간마다 인증서 만료일을 확인하여 자동으로 갱신(renew)하는 명령 실행
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 volumes:
   postgres_data:
