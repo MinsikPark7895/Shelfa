@@ -61,5 +61,8 @@ jobs:
             export DOCKER_BUILDKIT=1
             export COMPOSE_DOCKER_CLI_BUILD=1
             
+            # 기존 컨테이너 및 찌꺼기를 깔끔하게 내리기 (y/N 프롬프트 에러 방지)
+            docker-compose down
+            
             # 도커 백그라운드 재시작 (변경된 이미지만 다시 빌드)
             docker-compose up -d --build
