@@ -21,3 +21,23 @@ class User(Base):
     role = Column(String, default="user") # 'user / admin'
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class Book(Base):
+    """
+    로봇 워크플로우를 고려한 도서 모델
+    """
+    __tablename__ = "books"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    title = Column(String, index=True, nullable=False)
+    author = Column(String)
+    isbn = Column(String, unique=True, index=True)
+    publisher = Column(String)
+    cover_image_url = Column(String)
+    
+    # 🤖 로봇을 위한 물리적 위치 및 식별 데이터
+    shelf_location = Column(String) # 예: "Shelf-A-Row-2"
+    vision_marker_id = Column(String) # RealSense 455가 인식할 식별자 (마커 번호나 색상코드)
+    status = Column(String, default="AVAILABLE") # AVAILABLE, IN_STORAGE, IN_DISPENSER, RESERVED
+    
+    created_at = Column(DateTime, default=datetime.utcnow)

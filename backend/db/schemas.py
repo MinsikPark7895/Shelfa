@@ -35,3 +35,31 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     # 참고: refresh_token은 응답 바디가 아닌 HttpOnly 쿠키로 전달됩니다.
+
+class BookCreate(BaseModel):
+    title: str
+    author: str | None = None
+    isbn: str
+    publisher: str | None = None
+    cover_image_url: str | None = None
+    shelf_location: str | None = "UNASSIGNED"
+    vision_marker_id: str | None = None
+
+class BookResponse(BaseModel):
+    id: uuid.UUID
+    title: str
+    author: str | None = None
+    isbn: str
+    publisher: str | None = None
+    cover_image_url: str | None = None
+    shelf_location: str | None = None
+    vision_marker_id: str | None = None
+    status: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class BulkRegisterRequest(BaseModel):
+    """관리자용 대량 입고 요청 스키마"""
+    isbns: list[str] = Field(description="입고할 도서들의 ISBN 13자리 목록")
