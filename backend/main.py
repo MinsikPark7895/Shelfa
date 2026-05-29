@@ -3,7 +3,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from db.database import engine, Base
-from api.routes import auth
+from api.routes import auth, books
 from api.deps import limiter
 
 # [초기 세팅] PostgreSQL에 정의한 모델(테이블)들을 실제 DB에 생성합니다.
@@ -22,6 +22,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # 라우터(API 엔드포인트) 등록
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+app.include_router(books.router, prefix="/books", tags=["Books"])
 
 # 루트 엔드포인트
 @app.get("/")
