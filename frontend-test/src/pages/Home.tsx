@@ -1,0 +1,223 @@
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import '../styles/Home.css'
+
+const PLACEHOLDER_MAP: Record<string, string> = {
+  '전체': '제목, 저자, 키워드 검색',
+  '저자': '저자명을 입력하세요',
+  '출판사': '출판사명을 입력하세요',
+  '분류': '분류명을 입력하세요',
+}
+
+interface BookData {
+  id: number
+  title: string
+  author: string
+  coverImage: string
+}
+
+function Home() {
+  const [currentSlide, setCurrentSlide] = useState(0)
+  const navigate = useNavigate()
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const [searchCategory, setSearchCategory] = useState('전체')
+  const [showDropdown, setShowDropdown] = useState(false)
+
+  const [loanCount, setLoanCount] = useState(0)
+  const [nearestDday, setNearestDday] = useState('-')
+  const [nearestDueDate, setNearestDueDate] = useState('-')
+  const [reservationCount, setReservationCount] = useState(0)
+  const [wishBooks, setWishBooks] = useState<BookData[]>([])
+
+  const user = JSON.parse(localStorage.getItem('user') || '{}')
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentSlide(prev => (prev + 1) % 2)
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    if (user.id) {
+      fetchLibrarySummary()
+      fetchWishlist()
+    }
+  }, [])
+
+  const fetchLibrarySummary = async () => {
+    try {
+      // 대출 중
+      const loansRes = await fetch(`http://localhost:3001/reservations?userId=${user.id}&status=loaned`)
+      const loans = await loansRes.json()
+      setLoanCount(loans.length)
+
+      // 가장 가까운 반납일
+      if (loans.length > 0) {
+        const dueDates = loans.map((l: any) => new Date(l.dueDate).getTime())
+        const nearest = Math.min(...dueDates)
+        const diffDays = Math.ceil((nearest - Date.now()) / (1000 * 60 * 60 * 24))
+        setNearestDday(`D-${Math.max(0, diffDays)}`)
+        const d = new Date(nearest)
+        setNearestDueDate(`${d.getMonth() + 1}/${d.getDate()}`)
+      }
+
+      // 예약 중
+      const resRes = await fetch(`http://localhost:3001/reservations?userId=${user.id}&status=reserved`)
+      const reservations = await resRes.json()
+      setReservationCount(reservations.length)
+    } catch { /* */ }
+  }
+
+  const fetchWishlist = async () => {
+    try {
+      const favRes = await fetch(`http://localhost:3001/favorites?userId=${user.id}`)
+      const favs = await favRes.json()
+      const books: BookData[] = []
+      for (const fav of favs.slice(0, 5)) {
+        const bookRes = await fetch(`http://localhost:3001/books/${fav.bookId}`)
+        const book = await bookRes.json()
+        books.push(book)
+      }
+      setWishBooks(books)
+    } catch { /* */ }
+  }
+
+  const handleSearchSubmit = () => {
+    const val = searchInputRef.current?.value.trim()
+    if (val) navigate(`/search?q=${val}&cat=${searchCategory}`)
+  }
+
+  return (
+    <div className="page-container">
+      <div className="top-nav">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
+          <path d="M8 7h6" /><path d="M8 11h4" />
+        </svg>
+        <span className="logo-text">XYZ 도서관</span>
+      </div>
+
+      <div className="home-content">
+        <div className="search-bar-section">
+          <div className="search-bar">
+            <div className="search-bar-dropdown" onClick={() => setShowDropdown(!showDropdown)}>
+              <span className="search-bar-dropdown-text">{searchCategory}</span>
+              <span className="search-bar-dropdown-arrow">▼</span>
+              {showDropdown && (
+                <div className="search-bar-dropdown-menu">
+                  {['전체', '저자', '출판사', '분류'].map(cat => (
+                    <div key={cat} className={`search-bar-dropdown-item${searchCategory === cat ? ' active' : ''}`}
+                      onClick={(e) => { e.stopPropagation(); setSearchCategory(cat); setShowDropdown(false); }}>{cat}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <input ref={searchInputRef} className="search-bar-input" type="text"
+              placeholder={PLACEHOLDER_MAP[searchCategory] || '검색어를 입력하세요'}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSearchSubmit() }} />
+            <svg className="search-bar-icon-btn" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" onClick={handleSearchSubmit}>
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </div>
+        </div>
+
+        <div className="home-section">
+          <div className="home-section-header">
+            <span className="home-section-title">공지사항</span>
+            <a className="home-section-more" onClick={() => navigate('/notices')}>전체보기</a>
+          </div>
+          <div className="notice-card" onClick={() => navigate('/notices/벌레잡기')}>
+            <div className="notice-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg></div>
+            <div className="notice-content"><div className="notice-title">도서관 정기 방역 작업 안내 (6/15)</div><div className="notice-date">2026.06.07</div></div>
+          </div>
+          <div className="notice-card" onClick={() => navigate('/notices/신작소설')}>
+            <div className="notice-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg></div>
+            <div className="notice-content"><div className="notice-title">6월 신작 도서 목록 안내</div><div className="notice-date">2026.06.02</div></div>
+          </div>
+        </div>
+
+        <div className="home-section">
+          <div className="banner-slider">
+            <div className="banner-track" style={{ transform: `translateX(-${currentSlide * 50}%)` }}>
+              <div className="banner-slide banner-slide-1" onClick={() => navigate('/event/딩동댕정답')}>
+                <span className="banner-tag">진행 중인 이벤트</span><div className="banner-title">XYZ 독서 골든벨 참가자 모집</div>
+              </div>
+              <div className="banner-slide banner-slide-2" onClick={() => navigate('/event/인간시대의끝이도래했다')}>
+                <span className="banner-tag">AI 추천</span><div className="banner-title">AI가 추천하는 이달의 도서</div>
+              </div>
+            </div>
+            <div className="banner-dots">
+              <div className={`banner-dot ${currentSlide === 0 ? 'active' : ''}`} onClick={() => setCurrentSlide(0)}></div>
+              <div className={`banner-dot ${currentSlide === 1 ? 'active' : ''}`} onClick={() => setCurrentSlide(1)}></div>
+            </div>
+          </div>
+        </div>
+
+        <div className="home-section">
+          <div className="home-section-header">
+            <span className="home-section-title">내 서재</span>
+            <a className="home-section-more" onClick={() => navigate('/my-library')}>더보기</a>
+          </div>
+          <div className="library-card">
+            <div className="library-card-label">대출 중인 도서</div>
+            <div className="library-card-number-row">
+              <span className="library-card-number">{loanCount}</span>
+              <span className="library-card-unit">권</span>
+            </div>
+            <div className="library-card-divider"></div>
+            <div className="library-card-book-row">
+              <span className="library-card-book-title">반납일까지</span>
+              <span className="library-card-dday">{nearestDday}</span>
+            </div>
+          </div>
+          <div className="stat-row">
+            <div className="stat-card">
+              <div className="stat-label">반납 예정</div>
+              <div className="stat-value">📅 {nearestDueDate}</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">예약 도서</div>
+              <div className="stat-value">📋 {reservationCount}건</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="home-section">
+          <div className="home-section-header">
+            <span className="home-section-title">위시리스트</span>
+            <a className="home-section-more" onClick={() => navigate('/my-library?tab=favorites')}>더보기</a>
+          </div>
+          {wishBooks.length === 0 ? (
+            <div className="wish-empty">즐겨찾기한 도서가 없습니다.</div>
+          ) : (
+            <div className="wish-list">
+              {wishBooks.map(book => (
+                <div className="wish-card" key={book.id}>
+                  <div className="wish-cover" onClick={() => navigate(`/book/${book.id}`)}>
+                    {book.coverImage ? <img src={book.coverImage} alt={book.title} /> : (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /><path d="M8 7h6" /><path d="M8 11h4" /></svg>
+                    )}
+                  </div>
+                  <div className="wish-title">{book.title}</div>
+                  <div className="wish-author">{book.author}</div>
+                  <button className="wish-reserve-btn" onClick={() => navigate(`/book/${book.id}`)}>예약하기</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="tab-bar">
+        <a className="tab-item active" onClick={() => navigate('/home')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg><span className="tab-label">홈</span></a>
+        <a className="tab-item" onClick={() => navigate('/my-library')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /></svg><span className="tab-label">내 서재</span></a>
+        <a className="tab-item" onClick={() => navigate('/mypage')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg><span className="tab-label">사용자</span></a>
+        <a className="tab-item" onClick={() => navigate('/search')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg><span className="tab-label">검색</span></a>
+        <a className="tab-item" onClick={() => navigate('/notifications')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg><span className="tab-label">알림</span></a>
+      </div>
+    </div>
+  )
+}
+
+export default Home
