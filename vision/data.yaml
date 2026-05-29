@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['book spine']
+
+roboflow:
+  workspace: harald-varner-xv5u7
+  project: book-spine-instance-segmentation
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/harald-varner-xv5u7/book-spine-instance-segmentation/dataset/1

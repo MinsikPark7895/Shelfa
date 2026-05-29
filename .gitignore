@@ -219,6 +219,17 @@ bower_components
 
 *.sublime*
 
+# Vision runtime outputs
+vision/realtime_results/
+vision/paddle_ocr_output/
+vision/easyocr_results/
+vision/crop_results_130324/
+vision/runs/obb/predict/
+vision/runs/obb/val*/
+
+# Model checkpoints that are usually too large or intermediate
+vision/**/last.pt
+
 psd
 thumb
 sketch
