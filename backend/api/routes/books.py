@@ -4,7 +4,9 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from db.database import SessionLocal
 from db import models, schemas
-from api.services.aladin_api import search_book_from_aladin
+from db.schemas import BulkRegisterRequest
+from api.services.aladin_api import search_book_from_aladin, search_book_by_isbn
+from typing import List
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
@@ -54,3 +56,70 @@ async def save_book_from_aladin(request: Request, query: str, db: Session = Depe
     db.refresh(new_book)
     
     return new_book
+
+# ==========================================
+# 1. 사용자용 API: 로컬 DB 검색 (예약 용도)
+# ==========================================
+@router.get("/search", response_model=List[schemas.BookResponse])
+async def search_local_books(query: str, db: Session = Depends(get_db)):
+    """
+    [사용자용] 우리 도서관(DB)에 이미 입고되어 대출 가능한 책만 검색합니다.
+    """
+    # title에 query가 포함되어 있고, 상태가 AVAILABLE인 책만 검색
+    books = db.query(models.Book).filter(
+        models.Book.title.ilike(f"%{query}%"),
+        models.Book.status == "AVAILABLE"
+    ).all()
+    
+    return books
+
+# ==========================================
+# 2. 관리자용 API: 대량 도서 신규 입고 (바코드 연동용)
+# ==========================================
+@router.post("/bulk_register")
+async def bulk_register_books(request_data: BulkRegisterRequest, db: Session = Depends(get_db)):
+    """
+    [관리자용] 여러 개의 ISBN 바코드 리스트를 받아 한 번에 알라딘에서 정보를 가져오고 DB에 입고시킵니다.
+    """
+    successful_inserts = 0
+    failed_isbns = []
+    
+    new_books_to_add = []
+    
+    for isbn in request_data.isbns:
+        # 1. 이미 DB에 있는지 확인
+        existing_book = db.query(models.Book).filter(models.Book.isbn == isbn).first()
+        if existing_book:
+            continue # 이미 있는 책은 건너뜀
+            
+        # 2. 알라딘에서 정확한 ISBN으로 책 조회
+        book_data = await search_book_by_isbn(isbn)
+        
+        if not book_data:
+            failed_isbns.append(isbn)
+            continue
+            
+        # 3. 새로운 DB 모델 객체 생성 후 리스트에 담기
+        new_book = models.Book(
+            title=book_data.get("title"),
+            author=book_data.get("author"),
+            isbn=book_data.get("isbn13", isbn),
+            publisher=book_data.get("publisher"),
+            cover_image_url=book_data.get("cover"),
+            shelf_location="UNASSIGNED", # 입고 대기 상태
+            status="IN_STORAGE", # 관리자가 막 등록했으므로 스토리지에 있음
+            vision_marker_id=None
+        )
+        new_books_to_add.append(new_book)
+        successful_inserts += 1
+        
+    # 4. 모아둔 책 객체들을 한 번에 DB에 저장 (성능 최적화)
+    if new_books_to_add:
+        db.add_all(new_books_to_add)
+        db.commit()
+        
+    return {
+        "message": "대량 입고 처리가 완료되었습니다.",
+        "success_count": successful_inserts,
+        "failed_isbns": failed_isbns
+    }

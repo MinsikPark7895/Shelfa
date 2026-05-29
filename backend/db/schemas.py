@@ -59,3 +59,7 @@ class BookResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+class BulkRegisterRequest(BaseModel):
+    """관리자용 대량 입고 요청 스키마"""
+    isbns: list[str] = Field(description="입고할 도서들의 ISBN 13자리 목록")

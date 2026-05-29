@@ -25,3 +25,26 @@ async def search_book_from_aladin(query: str):
             if data.get("item"):
                 return data["item"][0] # 첫 번째 검색 결과 반환
         return None
+
+async def search_book_by_isbn(isbn: str):
+    """
+    알라딘 API에서 ISBN으로 정확한 도서 정보 1건을 조회합니다.
+    (바코드 연동 대량 입고용)
+    """
+    url = "http://www.aladin.co.kr/ttb/api/ItemLookUp.aspx"
+    params = {
+        "ttbkey": settings.ALADIN_TTB_KEY,
+        "itemIdType": "ISBN13",
+        "ItemId": isbn,
+        "output": "js",
+        "Version": "20131101"
+    }
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, params=params)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("item"):
+                return data["item"][0]
+        return None
+
