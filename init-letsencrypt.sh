@@ -5,7 +5,7 @@ if ! [ -x "$(command -v docker-compose)" ]; then
   exit 1
 fi
 
-domains=(shelfa.kro.kr www.shelfa.kro.kr)
+domains=(shelfa.co.kr www.shelfa.co.kr)
 rsa_key_size=4096
 data_path="./certbot"
 email="" # 알림을 받을 이메일 (비워두면 이메일 없이 등록)
