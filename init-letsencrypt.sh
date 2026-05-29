@@ -1,7 +1,7 @@
 #!/bin/bash
 
-if ! [ -x "$(command -v docker)" ]; then
-  echo 'Error: docker is not installed.' >&2
+if ! [ -x "$(command -v docker-compose)" ]; then
+  echo 'Error: docker-compose is not installed.' >&2
   exit 1
 fi
 
@@ -28,22 +28,21 @@ fi
 echo "### Nginx 부팅을 위한 임시(더미) 인증서 생성 중 ..."
 path="/etc/letsencrypt/live/$domains"
 mkdir -p "$data_path/conf/live/$domains"
-docker compose run --rm --entrypoint "\
-  openssl req -x509 -nodes -newkey rsa:$rsa_key_size -days 1\
-    -keyout '$path/privkey.pem' \
-    -out '$path/fullchain.pem' \
-    -subj '/CN=localhost'" certbot
+docker run --rm \
+  -v "$(pwd)/certbot/conf:/etc/letsencrypt" \
+  --entrypoint "/bin/sh" certbot/certbot -c \
+  "openssl req -x509 -nodes -newkey rsa:$rsa_key_size -days 1 -keyout '$path/privkey.pem' -out '$path/fullchain.pem' -subj '/CN=localhost'"
 echo
 
 echo "### Nginx 임시 실행 ..."
-docker compose up --force-recreate -d nginx
+docker-compose up --force-recreate -d nginx
 echo
 
 echo "### 더미 인증서 삭제 중 ..."
-docker compose run --rm --entrypoint "\
-  rm -Rf /etc/letsencrypt/live/$domains && \
-  rm -Rf /etc/letsencrypt/archive/$domains && \
-  rm -Rf /etc/letsencrypt/renewal/$domains.conf" certbot
+docker run --rm \
+  -v "$(pwd)/certbot/conf:/etc/letsencrypt" \
+  --entrypoint "/bin/sh" certbot/certbot -c \
+  "rm -Rf /etc/letsencrypt/live/$domains && rm -Rf /etc/letsencrypt/archive/$domains && rm -Rf /etc/letsencrypt/renewal/$domains.conf"
 echo
 
 echo "### Let's Encrypt 진짜 인증서 발급 요청 중 ..."
@@ -57,17 +56,19 @@ case "$email" in
   *) email_arg="--email $email" ;;
 esac
 
-docker compose run --rm --entrypoint "\
-  certbot certonly --webroot -w /var/www/certbot \
+docker run --rm \
+  -v "$(pwd)/certbot/conf:/etc/letsencrypt" \
+  -v "$(pwd)/certbot/www:/var/www/certbot" \
+  certbot/certbot certonly --webroot -w /var/www/certbot \
     $email_arg \
     $domain_args \
     --rsa-key-size $rsa_key_size \
     --agree-tos \
-    --force-renewal" certbot
+    --force-renewal
 echo
 
 echo "### Nginx 재시작 (인증서 적용) ..."
-docker compose exec nginx nginx -s reload
+docker exec shelfa_nginx nginx -s reload
 
 echo "================================================="
 echo "✅ 완벽하게 HTTPS(Let's Encrypt) 세팅이 완료되었습니다!"
