@@ -6,6 +6,7 @@ from db.database import SessionLocal
 from db import models, schemas
 from db.schemas import BulkRegisterRequest
 from api.services.aladin_api import search_book_from_aladin, search_book_by_isbn
+from api.deps import get_current_admin_user
 from typing import List
 
 router = APIRouter()
@@ -77,7 +78,11 @@ async def search_local_books(query: str, db: Session = Depends(get_db)):
 # 2. 관리자용 API: 대량 도서 신규 입고 (바코드 연동용)
 # ==========================================
 @router.post("/bulk_register")
-async def bulk_register_books(request_data: BulkRegisterRequest, db: Session = Depends(get_db)):
+async def bulk_register_books(
+    request_data: BulkRegisterRequest, 
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_admin_user) # 관리자 권한 방어선 추가
+):
     """
     [관리자용] 여러 개의 ISBN 바코드 리스트를 받아 한 번에 알라딘에서 정보를 가져오고 DB에 입고시킵니다.
     """

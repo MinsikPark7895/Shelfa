@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # 알라딘 Open API 인증키
     ALADIN_TTB_KEY: str
     
+    # 최고 관리자 설정
+    FIRST_SUPERUSER_EMAIL: str
+    FIRST_SUPERUSER_PASSWORD: str
+    
     # .env 파일에서 환경변수를 자동으로 불러옵니다.
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
