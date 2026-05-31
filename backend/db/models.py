@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Enum as SQLEnum, DateTime, ForeignKey
+from sqlalchemy import Column, String, Enum as SQLEnum, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
@@ -20,6 +20,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     
     role = Column(String, default="user") # 'user / admin'
+    is_active = Column(Boolean, default=True) # Soft Delete (회원 탈퇴 처리용)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

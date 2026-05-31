@@ -40,6 +40,14 @@ async def get_current_user(db: Session = Depends(get_db), token: str = Depends(o
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if user is None:
         raise credentials_exception
+        
+    # [Soft Delete 방어] 탈퇴한 사용자 접근 차단
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="비활성화되거나 탈퇴한 계정입니다."
+        )
+        
     return user
 
 async def get_current_admin_user(current_user: models.User = Depends(get_current_user)) -> models.User:

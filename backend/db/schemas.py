@@ -8,9 +8,29 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     
-    # [회원가입 4번: 비밀번호 복잡도 강제 방패막이]
     @field_validator('password')
     def validate_password(cls, v):
+        if len(v) < 8:
+            raise ValueError('비밀번호는 최소 8자 이상이어야 합니다.')
+        if not re.search(r"[a-zA-Z]", v):
+            raise ValueError('비밀번호에 영문자가 포함되어야 합니다.')
+        if not re.search(r"\d", v):
+            raise ValueError('비밀번호에 숫자가 포함되어야 합니다.')
+        if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", v):
+            raise ValueError('비밀번호에 특수문자가 포함되어야 합니다.')
+        return v
+
+class UserUpdate(BaseModel):
+    """Mass Assignment 방어: 이름만 수정 가능하도록 제한"""
+    name: str | None = None
+
+class PasswordUpdate(BaseModel):
+    """계정 탈취 방어: 현재 비밀번호를 필수로 요구"""
+    current_password: str
+    new_password: str
+    
+    @field_validator('new_password')
+    def validate_new_password(cls, v):
         if len(v) < 8:
             raise ValueError('비밀번호는 최소 8자 이상이어야 합니다.')
         if not re.search(r"[a-zA-Z]", v):

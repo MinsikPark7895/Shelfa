@@ -60,3 +60,22 @@ async def return_book(
     db.commit()
     
     return {"message": "정상적으로 반납 처리가 완료되었습니다. 디스펜서에 책을 넣어주세요."}
+
+@router.get("/history", response_model=PaginatedResponse[schemas.LoanResponse])
+async def get_loan_history(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, gt=0, le=50),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    마이페이지 - 과거 독서 기록(반납 완료된 대출) 조회 API
+    """
+    base_query = db.query(models.Loan).filter(
+        models.Loan.user_id == current_user.id,
+        models.Loan.status == "RETURNED" # 과거에 빌렸던 기록만 노출
+    )
+    total_count = base_query.count()
+    loans = base_query.order_by(models.Loan.borrowed_at.desc()).offset(skip).limit(limit).all()
+    
+    return {"total": total_count, "items": loans}
