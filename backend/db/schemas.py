@@ -63,3 +63,38 @@ class BookResponse(BaseModel):
 class BulkRegisterRequest(BaseModel):
     """관리자용 대량 입고 요청 스키마"""
     isbns: list[str] = Field(description="입고할 도서들의 ISBN 13자리 목록")
+
+class LoanResponse(BaseModel):
+    id: uuid.UUID
+    book: BookResponse
+    borrowed_at: datetime
+    due_date: datetime
+    status: str
+    
+    class Config:
+        from_attributes = True
+
+class ReservationResponse(BaseModel):
+    id: uuid.UUID
+    book: BookResponse
+    reserved_at: datetime
+    status: str
+    
+    class Config:
+        from_attributes = True
+
+class FavoriteResponse(BaseModel):
+    id: uuid.UUID
+    book: BookResponse
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+from typing import TypeVar, Generic
+from pydantic.generics import GenericModel
+
+T = TypeVar('T')
+class PaginatedResponse(GenericModel, Generic[T]):
+    total: int
+    items: list[T]

@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from fastapi import APIRouter, Depends, HTTPException, Query
 from db.database import SessionLocal
 from db import models, schemas
-from db.schemas import BulkRegisterRequest
+from db.schemas import BulkRegisterRequest, PaginatedResponse
 from api.services.aladin_api import search_book_from_aladin, search_book_by_isbn
-from api.deps import get_current_admin_user
+from api.deps import get_current_admin_user, get_db
 from typing import List
 
 router = APIRouter()
@@ -61,18 +62,31 @@ async def save_book_from_aladin(request: Request, query: str, db: Session = Depe
 # ==========================================
 # 1. 사용자용 API: 로컬 DB 검색 (예약 용도)
 # ==========================================
-@router.get("/search", response_model=List[schemas.BookResponse])
-async def search_local_books(query: str, db: Session = Depends(get_db)):
+@router.get("/search", response_model=PaginatedResponse[schemas.BookResponse])
+@limiter.limit("30/minute")
+async def search_local_books(
+    request: Request,
+    query: str, 
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, gt=0, le=100), # Resource Exhaustion 방어: 최대 100개
+    db: Session = Depends(get_db)
+):
     """
-    [사용자용] 우리 도서관(DB)에 이미 입고되어 대출 가능한 책만 검색합니다.
+    [사용자용] 우리 도서관(DB)에 이미 입고되어 대출 가능한 책만 검색합니다. (페이지네이션 적용)
     """
-    # title에 query가 포함되어 있고, 상태가 AVAILABLE인 책만 검색
-    books = db.query(models.Book).filter(
+    # 쿼리 생성
+    base_query = db.query(models.Book).filter(
         models.Book.title.ilike(f"%{query}%"),
         models.Book.status == "AVAILABLE"
-    ).all()
+    )
     
-    return books
+    # 전체 개수 파악
+    total_count = base_query.count()
+    
+    # 페이지네이션 적용해서 데이터 가져오기
+    books = base_query.order_by(models.Book.created_at.desc()).offset(skip).limit(limit).all()
+    
+    return {"total": total_count, "items": books}
 
 # ==========================================
 # 2. 관리자용 API: 대량 도서 신규 입고 (바코드 연동용)
