@@ -110,4 +110,4 @@ async def withdraw_account(
     # 세션 강제 종료
     await redis_client.delete_refresh_token(str(current_user.id))
     
-    return {"message": "회원 탈퇴가 안전하게 완료되었습니다. 이용해 주셔서 감사합니다."}
+    return {"message": "회원 탈퇴가 안전하게 완료되었습니다. 이용해주셔서 감사합니다."}
