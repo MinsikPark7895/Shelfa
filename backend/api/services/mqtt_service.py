@@ -30,8 +30,8 @@ class MQTTService:
             "target_book": {
                 "book_id": book_id,
                 "location_name": location,
-                # 임시 하드코딩 좌표 (실제로는 DB에서 동적 조회 필요)
-                "coordinates": {"x": 2.5, "y": 1.2, "z": 0.85} 
+                # 두산 E0509 로봇이 닿을 수 있는 안전한 좌표(mm 단위)
+                "coordinates": {"x": 400.0, "y": 0.0, "z": 300.0} 
             }
         }
         
