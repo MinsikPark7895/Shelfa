@@ -1,32 +1,33 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import '../styles/Register.css'
+import { publicFetch } from '../api'
 
 function Register() {
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const navigate = useNavigate()
 
   const handleRegister = async () => {
-    if (!username || !password || !name) {
+    if (!email || !password || !name) {
       alert('모든 항목을 입력해주세요.')
       return
     }
 
     try {
-      const res = await fetch('/api/v1/auth/signup', {
+      const res = await publicFetch('/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, username, password })
+        body: JSON.stringify({ name, email, password }),
       })
-      const data = await res.json()
 
       if (res.ok) {
         alert('회원가입이 완료되었습니다.')
         navigate('/')
       } else {
-        alert(data.detail || '회원가입에 실패했습니다.')
+        const err = await res.json().catch(() => ({}))
+        alert(err?.detail || '회원가입에 실패했습니다.')
       }
     } catch {
       alert('서버 연결에 실패했습니다.')
@@ -49,16 +50,16 @@ function Register() {
           <p className="register-desc">회원님의 정보를 입력해주세요.</p>
 
           <div className="form-group">
-            <label className="form-label">아이디</label>
+            <label className="form-label">이메일</label>
             <div className="input-wrapper">
               <svg className="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
               </svg>
               <input
-                type="text"
-                placeholder="아이디를 입력하세요"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                type="email"
+                placeholder="이메일을 입력하세요"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
               />
             </div>
           </div>

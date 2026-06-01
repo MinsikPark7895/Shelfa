@@ -1,32 +1,46 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import '../styles/Login.css'
+import { publicFetch, apiFetch } from '../api'
 
 function Login() {
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const navigate = useNavigate()
 
   const handleLogin = async () => {
-    if (!username || !password) {
-      alert('아이디와 비밀번호를 입력해주세요.')
+    if (!email || !password) {
+      alert('이메일과 비밀번호를 입력해주세요.')
       return
     }
 
     try {
-      const res = await fetch('/api/v1/auth/login', {
+      const formData = new URLSearchParams()
+      formData.append('username', email)
+      formData.append('password', password)
+
+      const res = await publicFetch('/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ username, password })
+        body: formData.toString(),
       })
-      const data = await res.json()
 
-      if (res.ok) {
-        localStorage.setItem('access_token', data.access_token)
-        navigate('/home')
-      } else {
-        alert(data.detail || '아이디 또는 비밀번호가 틀렸습니다.')
+      if (!res.ok) {
+        alert('이메일 또는 비밀번호가 틀렸습니다.')
+        return
       }
+
+      const data = await res.json()
+      localStorage.setItem('access_token', data.access_token)
+
+      // 내 정보 조회 후 저장
+      const meRes = await apiFetch('/users/me')
+      if (meRes.ok) {
+        const user = await meRes.json()
+        localStorage.setItem('user', JSON.stringify(user))
+      }
+
+      navigate('/home')
     } catch {
       alert('서버 연결에 실패했습니다.')
     }
@@ -49,16 +63,17 @@ function Login() {
         </p>
 
         <div className="form-group">
-          <label className="form-label">아이디</label>
+          <label className="form-label">이메일</label>
           <div className="input-wrapper">
             <svg className="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
             </svg>
             <input
-              type="text"
-              placeholder="아이디를 입력하세요"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              type="email"
+              placeholder="이메일을 입력하세요"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleLogin() }}
             />
           </div>
         </div>
@@ -74,6 +89,7 @@ function Login() {
               placeholder="비밀번호를 입력하세요"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleLogin() }}
             />
           </div>
         </div>
