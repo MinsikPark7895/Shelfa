@@ -8,6 +8,7 @@ from db.database import SessionLocal
 from db import models, schemas
 from api.deps import get_current_user, get_db
 from db.schemas import PaginatedResponse
+from api.services.mqtt_service import mqtt_service
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
@@ -48,7 +49,12 @@ async def create_reservation(
         db.commit()
         db.refresh(new_reservation)
         
-        # TODO: 로봇 관제 시스템(MQTT 등)에 도서 픽업 명령 전송 로직 추가 위치
+        # 💡 로봇에게 출동 명령 하달 (MQTT Publish)
+        mqtt_service.publish_pickup_command(
+            task_id=str(new_reservation.id),
+            book_id=str(book.id),
+            location=book.shelf_location
+        )
         
         return new_reservation
         
