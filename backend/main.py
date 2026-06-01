@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -29,6 +30,19 @@ app = FastAPI(
     description="보안이 강화된 야간 무인 도서 대출 및 로봇 관제 시스템 API",
     version="1.1.0",
     lifespan=lifespan
+)
+
+# CORS 방어벽 해제 설정 (프론트엔드 접근 허용)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://192.168.0.101:5173",
+        "https://www.shelfa.co.kr"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # [가입/로그인 1번: 봇 및 무차별 대입 방어] 앱 전체에 Rate Limiter 적용
