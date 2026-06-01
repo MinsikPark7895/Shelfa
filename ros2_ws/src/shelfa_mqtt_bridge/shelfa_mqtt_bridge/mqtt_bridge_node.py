@@ -3,17 +3,16 @@ from rclpy.node import Node
 import paho.mqtt.client as mqtt
 import json
 
-# 두산 로봇 제어를 위한 공식 서비스 임포트
-from dsr_msgs2.srv import MoveJoint, MoveLine
+from std_msgs.msg import Float64MultiArray
+from dsr_msgs2.srv import MoveJoint, MoveLine, MoveSplineTask
 
 class MqttBridgeNode(Node):
     def __init__(self):
         super().__init__('mqtt_bridge_node')
-        self.get_logger().info('🤖 MQTT 브릿지(로봇 제어 모드)가 시작되었습니다.')
+        self.get_logger().info('🤖 MQTT 브릿지(연속 궤적 모드)가 시작되었습니다.')
         
-        # 두산 로봇(E0509)을 제어할 서비스 클라이언트 생성
         self.move_joint_client = self.create_client(MoveJoint, '/dsr01/motion/move_joint')
-        self.move_line_client = self.create_client(MoveLine, '/dsr01/motion/move_line')
+        self.move_spline_client = self.create_client(MoveSplineTask, '/dsr01/motion/move_spline_task')
 
         # MQTT 설정 (paho-mqtt 2.0+ 호환성)
         try:
@@ -37,16 +36,12 @@ class MqttBridgeNode(Node):
         self.get_logger().info(f"📩 서버로부터 명령 수신: {payload_str}")
         
         if data.get("command") == "PICKUP":
-            coords = data["target_book"]["coordinates"]
-            
-            self.get_logger().info("🚀 픽업 명령 수신! 두산 로봇 팔을 가동합니다.")
-            self.execute_pickup_task(coords["x"], coords["y"], coords["z"])
+            waypoints = data["target_book"]["waypoints"]
+            self.get_logger().info(f"🚀 총 {len(waypoints)}개의 연속 궤적 수신! 픽업 기동을 시작합니다.")
+            self.execute_trajectory_task(waypoints)
 
-    def execute_pickup_task(self, target_x, target_y, target_z):
-        """실제 두산 E0509 로봇 팔을 제어하는 핵심 로직"""
-        
-        # 1. 서비스 대기 (가상환경이나 실물 로봇이 켜져 있어야 통과됨)
-        if not self.move_joint_client.wait_for_service(timeout_sec=2.0):
+    def execute_trajectory_task(self, waypoints):
+        if not self.move_joint_client.wait_for_service(timeout_sec=2.0) or not self.move_spline_client.wait_for_service(timeout_sec=2.0):
             self.get_logger().error("❌ 로봇 제어 서비스(/dsr01/...)를 찾을 수 없습니다! 로봇이나 가상환경을 먼저 켜주세요.")
             return
 
@@ -60,21 +55,33 @@ class MqttBridgeNode(Node):
         joint_req.acc = 30.0 
         joint_req.time = 0.0
         
-        # 동기로 서비스 호출 (로봇이 도착할 때까지 MQTT 스레드를 대기시킴)
+        # 동기로 대기
         self.move_joint_client.call(joint_req)
 
         # ==========================================
-        # STEP 2: 책이 있는 (X, Y, Z) 좌표로 팔 뻗기
+        # STEP 2: 연속 궤적(MoveSplineTask) 조립 및 전송
         # ==========================================
-        self.get_logger().info(f"2️⃣ 책의 위치(X:{target_x}, Y:{target_y}, Z:{target_z})로 팔을 뻗습니다 (MoveLine)")
-        line_req = MoveLine.Request()
-        line_req.pos = [target_x, target_y, target_z, 0.0, 180.0, 0.0]
-        line_req.vel = [20.0, 20.0] 
-        line_req.acc = [20.0, 20.0] 
-        line_req.time = 0.0
+        self.get_logger().info("2️⃣ 끊김 없는 연속 궤적(MoveSplineTask) 기동을 시작합니다.")
+        spline_req = MoveSplineTask.Request()
         
-        # 동기로 서비스 호출 (팔을 다 뻗을 때까지 대기)
-        self.move_line_client.call(line_req)
+        # JSON의 waypoint 리스트를 ROS2의 Float64MultiArray 리스트로 변환
+        for wp in waypoints:
+            pos_array = Float64MultiArray()
+            # [X, Y, Z, Rx, Ry, Rz]
+            pos_array.data = [wp['x'], wp['y'], wp['z'], 0.0, 180.0, 0.0]
+            spline_req.pos.append(pos_array)
+            
+        spline_req.pos_cnt = len(waypoints)
+        spline_req.vel = [20.0, 20.0]
+        spline_req.acc = [20.0, 20.0]
+        spline_req.time = 0.0
+        spline_req.ref = 0        # DR_BASE (로봇 베이스 기준)
+        spline_req.mode = 0       # MOVE_MODE_ABSOLUTE (절대 좌표)
+        spline_req.opt = 0        # SPLINE_VELOCITY_OPTION_DEFAULT
+        spline_req.sync_type = 0  # SYNC (완전 도달 시까지 대기)
+
+        # 통째로 전송 (두산 제어기가 알아서 큐에 넣고 부드럽게 이어줌)
+        self.move_spline_client.call(spline_req)
 
         # ==========================================
         # STEP 3: 그리퍼 닫기 (TODO)

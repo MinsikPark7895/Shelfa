@@ -30,8 +30,12 @@ class MQTTService:
             "target_book": {
                 "book_id": book_id,
                 "location_name": location,
-                # 두산 E0509 로봇이 닿을 수 있는 안전한 좌표(mm 단위)
-                "coordinates": {"x": 400.0, "y": 0.0, "z": 300.0} 
+                # 여러 개의 경유지 좌표 (팀원이 추후 여기에 동적으로 삽입)
+                "waypoints": [
+                    {"x": 400.0, "y": 0.0, "z": 300.0},
+                    {"x": 450.0, "y": 0.0, "z": 300.0},
+                    {"x": 500.0, "y": 0.0, "z": 300.0}
+                ]
             }
         }
         
