@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from db.database import engine, Base, SessionLocal
 from db.init_db import init_db_seed
-from api.routes import auth, books
+from api.routes import auth, books, loans, reservations, favorites, users
 from api.deps import limiter
 
 # [초기 세팅] PostgreSQL에 정의한 모델(테이블)들을 실제 DB에 생성합니다.
@@ -37,7 +37,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # 라우터(API 엔드포인트) 등록
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+app.include_router(users.router, prefix="/users", tags=["Users"])
 app.include_router(books.router, prefix="/books", tags=["Books"])
+app.include_router(loans.router, prefix="/loans", tags=["Loans"])
+app.include_router(reservations.router, prefix="/reservations", tags=["Reservations"])
+app.include_router(favorites.router, prefix="/favorites", tags=["Favorites"])
 
 # 루트 엔드포인트
 @app.get("/")
