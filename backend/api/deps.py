@@ -58,3 +58,29 @@ async def get_current_admin_user(current_user: models.User = Depends(get_current
             detail="이 작업을 수행할 권한(관리자)이 없습니다."
         )
     return current_user
+
+async def get_current_user_optional(
+    db: Session = Depends(get_db),
+    request: Request = None
+) -> models.User | None:
+    """토큰이 있으면 유저 객체를 반환하고, 없으면 None을 반환합니다."""
+    # Authorization 헤더 수동 파싱
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+        
+    token = auth_header.split(" ")[1]
+    
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            return None
+    except JWTError:
+        return None
+        
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user is None or not user.is_active:
+        return None
+        
+    return user

@@ -62,6 +62,7 @@ class BookCreate(BaseModel):
     isbn: str
     publisher: str | None = None
     cover_image_url: str | None = None
+    description: str | None = None
     shelf_location: str | None = "UNASSIGNED"
     vision_marker_id: str | None = None
 
@@ -72,6 +73,7 @@ class BookResponse(BaseModel):
     isbn: str
     publisher: str | None = None
     cover_image_url: str | None = None
+    description: str | None = None
     shelf_location: str | None = None
     vision_marker_id: str | None = None
     status: str
@@ -79,6 +81,10 @@ class BookResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+class BookDetailResponse(BookResponse):
+    """도서 상세 페이지 전용 스키마 (찜 여부 포함)"""
+    is_favorited: bool = False
 
 class BulkRegisterRequest(BaseModel):
     """관리자용 대량 입고 요청 스키마"""

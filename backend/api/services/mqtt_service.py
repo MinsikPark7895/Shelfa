@@ -30,8 +30,12 @@ class MQTTService:
             "target_book": {
                 "book_id": book_id,
                 "location_name": location,
-                # 임시 하드코딩 좌표 (실제로는 DB에서 동적 조회 필요)
-                "coordinates": {"x": 2.5, "y": 1.2, "z": 0.85} 
+                # 여러 개의 경유지 좌표 (팀원이 추후 여기에 동적으로 삽입)
+                "waypoints": [
+                    {"x": 400.0, "y": 0.0, "z": 300.0},
+                    {"x": 450.0, "y": 0.0, "z": 300.0},
+                    {"x": 500.0, "y": 0.0, "z": 300.0}
+                ]
             }
         }
         
