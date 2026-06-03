@@ -36,6 +36,7 @@ class Book(Base):
     isbn = Column(String, unique=True, index=True)
     publisher = Column(String)
     cover_image_url = Column(String)
+    description = Column(String) # 도서 줄거리 (Aladin API 연동)
     
     # 🤖 로봇을 위한 물리적 위치 및 식별 데이터
     shelf_location = Column(String) # 예: "Shelf-A-Row-2"
