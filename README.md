@@ -37,6 +37,14 @@ Shelfa는 **클라우드 웹 백엔드와 오프라인 ROS 2 로봇 시스템을
 
 ```mermaid
 graph TD
+    %% CI/CD Pipeline
+    subgraph CICD["🚀 CI/CD Pipeline"]
+        Github["GitHub Repository"]
+        Actions["GitHub Actions<br>(Auto Build & Deploy)"]
+        
+        Github -- "Push / Merge" --> Actions
+    end
+
     %% Cloud / Web Tier
     subgraph Cloud["☁️ Cloud & Web Tier (GCP / Docker)"]
         React["💻 React Web App<br>(Admin/User)"]
@@ -46,6 +54,9 @@ graph TD
         React -- "REST API" --> FastAPI
         FastAPI -- "Read/Write" --> Postgres
     end
+    
+    %% Deployment flow
+    Actions -- "Deploy via SSH" -.-> Cloud
 
     %% Edge / Robot Tier
     subgraph Edge["🤖 Robot Edge Tier (ROS 2 Humble)"]
