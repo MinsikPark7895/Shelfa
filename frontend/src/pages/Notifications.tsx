@@ -1,63 +1,71 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import '../styles/Notifications.css'
+import { apiFetch } from '../api'
 
 interface Notification {
   id: string
-  type: 'reserve' | 'return' | 'wishlist'
+  type: 'reserve' | 'return'
   message: string
   bookTitle: string
   bookMeta: string
   date: string
-  bookId: number
+  bookId: string
 }
+
+const DISMISSED_KEY = 'dismissed_notifications'
 
 function Notifications() {
   const navigate = useNavigate()
   const [notifications, setNotifications] = useState<Notification[]>([])
 
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  useEffect(() => { fetchNotifications() }, [])
 
-  useEffect(() => {
-    if (user.id) fetchNotifications()
-  }, [])
+  const getDismissed = (): string[] => {
+    try { return JSON.parse(localStorage.getItem(DISMISSED_KEY) || '[]') } catch { return [] }
+  }
 
   const fetchNotifications = async () => {
     const notifs: Notification[] = []
+    const dismissed = getDismissed()
+
     try {
-      // 예약된 도서 알림
-      const resRes = await fetch(`http://localhost:3001/reservations?userId=${user.id}&status=reserved`)
-      const reservations = await resRes.json()
-      for (const r of reservations) {
-        const bookRes = await fetch(`http://localhost:3001/books/${r.bookId}`)
-        const book = await bookRes.json()
-        notifs.push({
-          id: `reserve-${r.id}`,
-          type: 'reserve',
-          message: '예약하신 도서가 준비되었습니다.',
-          bookTitle: book.title,
-          bookMeta: `${book.author} / ${book.publisher} / ${book.classNumber}`,
-          date: r.reservedAt?.split('T')[0]?.replace(/-/g, '.') || '',
-          bookId: book.id,
-        })
+      // 예약 중 도서 알림 (PENDING)
+      const resRes = await apiFetch('/reservations/me?limit=50')
+      if (resRes.ok) {
+        const resData = await resRes.json()
+        for (const r of (resData.items || []).filter((r: any) => r.status === 'PENDING')) {
+          const id = `reserve-${r.id}`
+          if (dismissed.includes(id)) continue
+          notifs.push({
+            id,
+            type: 'reserve',
+            message: '예약하신 도서가 준비되었습니다.',
+            bookTitle: r.book.title,
+            bookMeta: `${r.book.author || ''} / ${r.book.publisher || ''} / ${r.book.shelf_location || ''}`,
+            date: r.reserved_at?.split('T')[0]?.replace(/-/g, '.') || '',
+            bookId: r.book.id,
+          })
+        }
       }
 
-      // 대출 중 도서 반납 알림
-      const loanRes = await fetch(`http://localhost:3001/reservations?userId=${user.id}&status=loaned`)
-      const loans = await loanRes.json()
-      for (const l of loans) {
-        const bookRes = await fetch(`http://localhost:3001/books/${l.bookId}`)
-        const book = await bookRes.json()
-        const daysLeft = Math.ceil((new Date(l.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-        if (daysLeft <= 3) {
+      // 반납일 3일 이내 알림
+      const loanRes = await apiFetch('/loans/me?limit=50')
+      if (loanRes.ok) {
+        const loanData = await loanRes.json()
+        for (const l of (loanData.items || []).filter((l: any) => l.status === 'ACTIVE')) {
+          const daysLeft = Math.ceil((new Date(l.due_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+          if (daysLeft > 3) continue
+          const id = `return-${l.id}`
+          if (dismissed.includes(id)) continue
           notifs.push({
-            id: `return-${l.id}`,
+            id,
             type: 'return',
-            message: `대출 도서의 반납일이 ${daysLeft}일 남았습니다.`,
-            bookTitle: book.title,
-            bookMeta: `${book.author} / ${book.publisher} / ${book.classNumber}`,
-            date: l.dueDate?.split('T')[0]?.replace(/-/g, '.') || '',
-            bookId: book.id,
+            message: `대출 도서의 반납일이 ${Math.max(0, daysLeft)}일 남았습니다.`,
+            bookTitle: l.book.title,
+            bookMeta: `${l.book.author || ''} / ${l.book.publisher || ''} / ${l.book.shelf_location || ''}`,
+            date: l.due_date?.split('T')[0]?.replace(/-/g, '.') || '',
+            bookId: l.book.id,
           })
         }
       }
@@ -65,15 +73,16 @@ function Notifications() {
     setNotifications(notifs)
   }
 
-  const handleBookClick = (noti: Notification) => {
-    navigate(`/book/${noti.bookId}`)
-  }
-
   const handleDelete = (id: string) => {
+    const dismissed = getDismissed()
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed, id]))
     setNotifications(prev => prev.filter(n => n.id !== id))
   }
 
   const handleClearAll = () => {
+    const dismissed = getDismissed()
+    const ids = notifications.map(n => n.id)
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed, ...ids]))
     setNotifications([])
   }
 
@@ -85,6 +94,13 @@ function Notifications() {
           <path d="M8 7h6" /><path d="M8 11h4" />
         </svg>
         <span className="logo-text">XYZ 도서관</span>
+        {JSON.parse(localStorage.getItem('user') || '{}').role === 'admin' && (
+          <button className="admin-nav-btn" onClick={() => navigate('/admin')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+            </svg>
+          </button>
+        )}
       </div>
 
       <div className="noti-content">
@@ -116,7 +132,7 @@ function Notifications() {
                   </button>
                 </div>
                 <div className="noti-item-date">{noti.date}</div>
-                <div className="noti-book-card" onClick={() => handleBookClick(noti)}>
+                <div className="noti-book-card" onClick={() => { handleDelete(noti.id); if (noti.type === 'reserve') { navigate('/my-library?tab=storage') } else { navigate(`/book/${noti.bookId}`) } }}>
                   <div className="noti-book-cover"></div>
                   <div className="noti-book-info">
                     <div className="noti-book-title">{noti.bookTitle}</div>

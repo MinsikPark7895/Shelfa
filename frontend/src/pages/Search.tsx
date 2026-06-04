@@ -4,7 +4,10 @@ import '../styles/Search.css'
 import ReservationModal from './ReservationModal'
 import { apiFetch } from '../api'
 
-const STORAGE_KEY = 'shelfa-recent-searches'
+const getStorageKey = () => {
+  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  return user.id ? `shelfa-recent-searches-${user.id}` : 'shelfa-recent-searches'
+}
 interface RecentSearch { keyword: string; category: string }
 interface BookResult { id: string; title: string; author: string; publisher: string; shelf_location: string; cover_image_url: string; status: string; displayStatus: string }
 
@@ -30,9 +33,19 @@ function Search() {
 
   useEffect(() => {
     fetchFavorites()
+    // 검색 상태 복원
+    const savedValue = sessionStorage.getItem('search_value')
+    const savedCategory = sessionStorage.getItem('search_category') || '전체'
+    if (savedValue && !searchParams.get('q')) {
+      setSearchValue(savedValue)
+      setSearchCategory(savedCategory)
+      setLastSearchCategory(savedCategory)
+      setIsSearching(true)
+      fetchBooksWithCategory(savedValue, savedCategory)
+    }
     let saved: string | null = null
     try {
-      saved = localStorage.getItem(STORAGE_KEY)
+      saved = localStorage.getItem(getStorageKey())
       if (saved) {
         const parsed = JSON.parse(saved)
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -40,7 +53,7 @@ function Search() {
           else setRecentSearches(parsed)
         }
       }
-    } catch { localStorage.removeItem(STORAGE_KEY) }
+    } catch { localStorage.removeItem(getStorageKey()) }
     const q = searchParams.get('q')
     const cat = searchParams.get('cat')
     if (cat) { setSearchCategory(cat); setLastSearchCategory(cat) }
@@ -67,7 +80,31 @@ function Search() {
     } catch { /* */ }
   }
 
+  const fetchBooksWithCategory = async (keyword: string, category: string) => {
+    sessionStorage.setItem('search_value', keyword)
+    sessionStorage.setItem('search_category', category)
+    try {
+      const res = await apiFetch(`/books/search?query=${encodeURIComponent(keyword)}&limit=50`)
+      if (!res.ok) { setSearchResults([]); return }
+      const data = await res.json()
+      const [loanRes, resRes] = await Promise.all([apiFetch('/loans/me?limit=50'), apiFetch('/reservations/me?limit=50')])
+      const loanData = loanRes.ok ? await loanRes.json() : { items: [] }
+      const resData = resRes.ok ? await resRes.json() : { items: [] }
+      const myLoanIds = new Set(loanData.items?.map((l: any) => l.book.id) || [])
+      const myResIds = new Set(resData.items?.filter((r: any) => r.status === 'PENDING').map((r: any) => r.book.id) || [])
+      const items = (data.items || []).map((book: any) => {
+        let displayStatus = book.status === 'AVAILABLE' ? 'available' : 'borrowed'
+        if (myLoanIds.has(book.id)) displayStatus = 'my_loan'
+        else if (myResIds.has(book.id)) displayStatus = 'my_reservation'
+        return { ...book, displayStatus }
+      })
+      setSearchResults(items)
+    } catch { setSearchResults([]) }
+  }
+
   const fetchBooks = async (keyword: string) => {
+    sessionStorage.setItem('search_value', keyword)
+    sessionStorage.setItem('search_category', searchCategory)
     try {
       const res = await apiFetch(`/books/search?query=${encodeURIComponent(keyword)}&limit=50`)
       if (!res.ok) { setSearchResults([]); return }
@@ -84,7 +121,7 @@ function Search() {
       const myResIds = new Set(resData.items?.filter((r: any) => r.status === 'pending').map((r: any) => r.book.id) || [])
 
       const items = (data.items || []).map((book: any) => {
-        let displayStatus = book.status === 'available' ? 'available' : 'borrowed'
+        let displayStatus = book.status === 'AVAILABLE' ? 'available' : 'borrowed'
         if (myLoanIds.has(book.id)) displayStatus = 'my_loan'
         else if (myResIds.has(book.id)) displayStatus = 'my_reservation'
         return { ...book, displayStatus }
@@ -93,7 +130,7 @@ function Search() {
     } catch { setSearchResults([]) }
   }
 
-  const saveSearches = (searches: RecentSearch[]) => { setRecentSearches(searches); localStorage.setItem(STORAGE_KEY, JSON.stringify(searches)) }
+  const saveSearches = (searches: RecentSearch[]) => { setRecentSearches(searches); localStorage.setItem(getStorageKey(), JSON.stringify(searches)) }
   const handleSearch = () => {
     const trimmed = searchValue.trim()
     if (!trimmed) return
@@ -134,6 +171,13 @@ function Search() {
       <div className="top-nav">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /><path d="M8 7h6" /><path d="M8 11h4" /></svg>
         <span className="logo-text">XYZ 도서관</span>
+        {JSON.parse(localStorage.getItem('user') || '{}').role === 'admin' && (
+          <button className="admin-nav-btn" onClick={() => navigate('/admin')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+            </svg>
+          </button>
+        )}
       </div>
       <div className="search-content">
         <div className="search-input-section">
