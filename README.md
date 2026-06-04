@@ -38,7 +38,7 @@ Shelfa는 **클라우드 웹 백엔드와 오프라인 ROS 2 로봇 시스템을
 ```mermaid
 graph TD
     %% CI/CD Pipeline
-    subgraph CICD["🚀 CI/CD Pipeline"]
+    subgraph CICD [🚀 CI/CD Pipeline]
         Github["GitHub Repository"]
         Actions["GitHub Actions<br>(Auto Build & Deploy)"]
         
@@ -46,7 +46,7 @@ graph TD
     end
 
     %% Cloud / Web Tier
-    subgraph Cloud["☁️ Cloud & Web Tier (GCP / Docker)"]
+    subgraph Cloud [☁️ Cloud & Web Tier (GCP / Docker)]
         React["💻 React Web App<br>(Admin/User)"]
         FastAPI["⚙️ FastAPI Backend<br>(Reservation / Business Logic)"]
         Postgres[(🗄️ PostgreSQL)]
@@ -59,11 +59,11 @@ graph TD
     Actions -- "Deploy via SSH" -.-> Cloud
 
     %% Edge / Robot Tier
-    subgraph Edge["🤖 Robot Edge Tier (ROS 2 Humble)"]
+    subgraph Edge [🤖 Robot Edge Tier (ROS 2 Humble)]
         MQTT{"📡 Paho-MQTT Broker"}
         Master["👑 Master Orchestrator Node<br>(Async State Machine)"]
         
-        subgraph Slaves[" ROS 2 Nodes (shelfa_msgs)"]
+        subgraph Slaves [ROS 2 Nodes shelfa_msgs]
             Vision["👁️ Vision Node<br>(OCR & Depth)"]
             Arm["🦾 Arm Node<br>(Doosan SDK)"]
             Nav["🚗 Nav2 Node<br>(SLAM)"]
