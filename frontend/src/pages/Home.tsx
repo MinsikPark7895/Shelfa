@@ -19,6 +19,7 @@ interface BookData {
   shelf_location: string
   status: string
   isAvailable: boolean
+  displayStatus: string
 }
 
 function Home() {
@@ -64,13 +65,26 @@ function Home() {
 
   const fetchWishlist = async () => {
     try {
-      const res = await apiFetch('/favorites/me?limit=5')
-      if (!res.ok) return
-      const data = await res.json()
-      const books: BookData[] = (data.items || []).map((f: any) => ({
-        ...f.book,
-        isAvailable: f.book.status === 'available',
-      }))
+      const [favRes, loanRes, resRes] = await Promise.all([
+        apiFetch('/favorites/me?limit=5'),
+        apiFetch('/loans/me?limit=50'),
+        apiFetch('/reservations/me?limit=50'),
+      ])
+      if (!favRes.ok) return
+      const favData = await favRes.json()
+      const loanData = loanRes.ok ? await loanRes.json() : { items: [] }
+      const resData = resRes.ok ? await resRes.json() : { items: [] }
+
+      const myLoanIds = new Set(loanData.items?.map((l: any) => l.book.id) || [])
+      const myResIds = new Set(resData.items?.filter((r: any) => r.status === 'PENDING').map((r: any) => r.book.id) || [])
+
+      const books: BookData[] = (favData.items || []).map((f: any) => {
+        let displayStatus = 'available'
+        if (myLoanIds.has(f.book.id)) displayStatus = 'my_loan'
+        else if (myResIds.has(f.book.id)) displayStatus = 'my_reservation'
+        else if (f.book.status !== 'AVAILABLE') displayStatus = 'borrowed'
+        return { ...f.book, isAvailable: displayStatus === 'available', displayStatus }
+      })
       setWishBooks(books)
     } catch { /* */ }
   }
@@ -88,6 +102,13 @@ function Home() {
           <path d="M8 7h6" /><path d="M8 11h4" />
         </svg>
         <span className="logo-text">XYZ 도서관</span>
+        {JSON.parse(localStorage.getItem('user') || '{}').role === 'admin' && (
+          <button className="admin-nav-btn" onClick={() => navigate('/admin')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+            </svg>
+          </button>
+        )}
       </div>
 
       <div className="home-content">
@@ -193,14 +214,10 @@ function Home() {
                   </div>
                   <div className="wish-title">{book.title}</div>
                   <div className="wish-author">{book.author}</div>
-                  <div className={`wish-badge ${book.isAvailable ? 'badge-available' : 'badge-unavailable'}`}>
-                    {book.isAvailable ? '대출가능' : '대출불가'}
-                  </div>
-                  <button
-                    className={`wish-reserve-btn${book.isAvailable ? '' : ' disabled'}`}
-                    disabled={!book.isAvailable}
-                    onClick={() => book.isAvailable && setSelectedBook(book)}
-                  >예약하기</button>
+                  {book.displayStatus === 'available' && (<><div className="wish-badge badge-available">대출가능</div><button className="wish-reserve-btn" onClick={() => setSelectedBook(book)}>예약하기</button></>)}
+                  {book.displayStatus === 'borrowed' && (<><div className="wish-badge badge-unavailable">대출불가</div><button className="wish-reserve-btn disabled" disabled>예약불가</button></>)}
+                  {book.displayStatus === 'my_loan' && (<><div className="wish-badge badge-unavailable">대출불가</div><button className="wish-reserve-btn disabled" disabled>예약불가</button></>)}
+                  {book.displayStatus === 'my_reservation' && (<><div className="wish-badge badge-myreserve">예약완료</div><button className="wish-reserve-btn disabled" disabled>예약완료</button></>)}
                 </div>
               ))}
             </div>

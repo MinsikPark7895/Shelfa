@@ -1,0 +1,137 @@
+.admin-nav-icon {
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  color: var(--gray-500);
+}
+
+.admin-content {
+  padding: 16px 20px 100px;
+}
+
+.admin-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.admin-tab-content {
+  margin-top: 16px;
+}
+
+.admin-loading,
+.admin-empty {
+  text-align: center;
+  color: var(--gray-400);
+  font-size: 14px;
+  margin-top: 120px;
+}
+
+.admin-user-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-user-card {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-user-row1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-user-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.admin-user-email {
+  font-size: 12px;
+  color: var(--gray-500);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-user-date {
+  font-size: 11px;
+  color: var(--gray-400);
+  white-space: nowrap;
+}
+
+.admin-user-row2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-user-badge-wrap {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+}
+
+.admin-dropdown-icon {
+  width: 12px;
+  height: 12px;
+  color: var(--gray-400);
+}
+
+.admin-role-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.admin-role-badge.admin {
+  background: #EDF2FF;
+  color: #3B5BDB;
+}
+
+.admin-role-badge.user {
+  background: var(--gray-100);
+  color: var(--gray-500);
+}
+
+.admin-active-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.admin-active-badge.active {
+  background: #EBFBEE;
+  color: #2F9E44;
+}
+
+.admin-active-badge.inactive {
+  background: #FFF5F5;
+  color: #E03131;
+}
+
+.admin-user-stat {
+  font-size: 12px;
+  color: var(--gray-500);
+  margin-left: auto;
+}
+
+.admin-user-stat + .admin-user-stat {
+  margin-left: 8px;
+}

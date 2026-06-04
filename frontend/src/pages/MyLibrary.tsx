@@ -51,13 +51,13 @@ function MyLibrary() {
       const resData = resRes.ok ? await resRes.json() : { items: [] }
 
       const myLoanIds = new Set(loanData.items?.map((l: any) => l.book.id) || [])
-      const myResIds = new Set(resData.items?.filter((r: any) => r.status === 'pending').map((r: any) => r.book.id) || [])
+      const myResIds = new Set(resData.items?.filter((r: any) => r.status === 'PENDING').map((r: any) => r.book.id) || [])
 
       const items: FavItem[] = (favData.items || []).map((f: any) => {
         let displayStatus = 'available'
         if (myLoanIds.has(f.book.id)) displayStatus = 'my_loan'
         else if (myResIds.has(f.book.id)) displayStatus = 'my_reservation'
-        else if (f.book.status !== 'available') displayStatus = 'borrowed'
+        else if (f.book.status !== 'AVAILABLE') displayStatus = 'borrowed'
         return { ...f, displayStatus }
       })
       setFavoriteItems(items)
@@ -70,7 +70,7 @@ function MyLibrary() {
       const res = await apiFetch('/reservations/me?limit=50')
       if (res.ok) {
         const data = await res.json()
-        setStorageItems(data.items?.filter((r: any) => r.status === 'pending') || [])
+        setStorageItems(data.items?.filter((r: any) => r.status === 'PENDING') || [])
       }
     } catch { /* */ }
   }
@@ -99,14 +99,39 @@ function MyLibrary() {
     } catch { alert('오류가 발생했습니다.') } finally { setIsProcessing(false) }
   }
 
+  const handleCancelReservation = async (reservationId: string) => {
+    if (isProcessing) return
+    if (!confirm('예약을 취소하시겠습니까?')) return
+    setIsProcessing(true)
+    try {
+      await apiFetch(`/reservations/${reservationId}/cancel`, { method: 'POST' })
+      fetchStorage()
+    } catch { alert('오류가 발생했습니다.') } finally { setIsProcessing(false) }
+  }
+
   const getDday = (d: string) => { const diff = Math.ceil((new Date(d).getTime() - Date.now()) / 86400000); return `D-${Math.max(0, diff)}` }
   const formatDate = (d: string) => { const dt = new Date(d); return `${dt.getFullYear()}.${String(dt.getMonth() + 1).padStart(2, '0')}.${String(dt.getDate()).padStart(2, '0')}` }
-  const getPickupDeadline = (d: string) => { const dt = new Date(d); dt.setHours(dt.getHours() + 1); return `${dt.getHours()}:${String(dt.getMinutes()).padStart(2, '0')}` }
+  const getPickupDeadline = (d: string) => {
+    const dt = new Date(d)
+    const kst = new Date(dt.getTime() + (9 * 60 * 60 * 1000) + (1 * 60 * 60 * 1000))
+    return `${kst.getHours()}:${String(kst.getMinutes()).padStart(2, '0')}`
+  }
   const isOverdue = (d: string) => Math.ceil((new Date(d).getTime() - Date.now()) / 86400000) <= 3
+  const isPastDue = (d: string) => new Date(d).getTime() < Date.now()
 
   return (
     <div className="page-container">
-      <div className="top-nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /><path d="M8 7h6" /><path d="M8 11h4" /></svg><span className="logo-text">XYZ 도서관</span></div>
+      <div className="top-nav">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /><path d="M8 7h6" /><path d="M8 11h4" /></svg>
+        <span className="logo-text">XYZ 도서관</span>
+        {JSON.parse(localStorage.getItem('user') || '{}').role === 'admin' && (
+          <button className="admin-nav-btn" onClick={() => navigate('/admin')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+            </svg>
+          </button>
+        )}
+      </div>
       <div className="mylibrary-content">
         <h1 className="mylibrary-title">내 서재</h1>
         <div className="tab-group">
@@ -131,7 +156,9 @@ function MyLibrary() {
                 </div>
                 <div className="book-card-meta">{item.book.shelf_location}</div>
                 <div className="book-card-meta">{item.book.author} 지음</div>
-                <div className="book-card-due-row"><span className={`book-card-due ${isOverdue(item.due_date) ? 'overdue' : ''}`}>반납일: {formatDate(item.due_date)}</span><button className="book-card-extend-btn" onClick={() => setShowExtensionModal(true)}>연장하기</button></div>
+                <div className="book-card-due-row"><span className={`book-card-due ${isPastDue(item.due_date) ? 'overdue' : isOverdue(item.due_date) ? 'warning' : ''}`}>
+                  {isPastDue(item.due_date) ? '⚠️ 반납 기한 초과: ' : '반납일: '}{formatDate(item.due_date)}
+                </span><button className="book-card-extend-btn" onClick={() => setShowExtensionModal(true)}>연장하기</button></div>
               </div>
             </div>))}</div>
           )}
@@ -172,12 +199,29 @@ function MyLibrary() {
                 <div className="book-card-title-row"><div className="book-card-title">{item.book.title}</div>
                   <button className="book-card-fav-btn" onClick={(e) => handleToggleFavorite(item.book.id, e)}><svg viewBox="0 0 24 24" fill={favBookIds.has(item.book.id) ? '#E03131' : 'none'} stroke={favBookIds.has(item.book.id) ? '#E03131' : 'var(--gray-400)'} strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg></button>
                 </div>
-                <div className="book-card-meta">{item.book.shelf_location}</div>
                 <div className="book-card-meta">{item.book.author} 지음</div>
                 <div className="book-card-storage-badge"><span className="badge-storage">수령 대기</span></div>
                 <div className="book-card-storage-info">
-                  <div className="book-card-storage-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg><span>보관 장소: {item.book.shelf_location || '-'}</span></div>
-                  <div className="book-card-storage-row deadline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg><span>수령 기한: 금일 {getPickupDeadline(item.reserved_at)} 까지</span></div>
+                  <div className="book-card-storage-box">
+                    <div className="book-card-storage-section">
+                      <div className="book-card-storage-label-row">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
+                        <span>보관 장소</span>
+                      </div>
+                      <div className="book-card-storage-value">{item.book.shelf_location && item.book.shelf_location !== 'UNASSIGNED' ? item.book.shelf_location : '배치 대기 중'}</div>
+                    </div>
+                    <button className="book-card-locker-btn" onClick={() => alert('보관함 열기 기능은 준비 중입니다.')}>보관함 열기</button>
+                    <div className="book-card-storage-section">
+                      <div className="book-card-storage-label-row">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#E03131" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+                        <span>수령 기한</span>
+                      </div>
+                      <div className="book-card-storage-deadline-row">
+                        <div className="book-card-storage-deadline">금일 {getPickupDeadline(item.reserved_at)} 까지</div>
+                        <button className="book-card-cancel-btn" onClick={() => handleCancelReservation(item.id)}>예약 취소</button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>))}</div>

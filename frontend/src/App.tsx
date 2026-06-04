@@ -2,26 +2,39 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import RegisterComplete from './pages/RegisterComplete'
 import MyLibrary from './pages/MyLibrary'
 import MyPage from './pages/MyPage'
 import Notifications from './pages/Notifications'
 import Search from './pages/Search'
 import BookDetail from './pages/BookDetail'
+import AdminPage from './pages/AdminPage'
 import './App.css'
+
+function PrivateRoute({ children }: { children: JSX.Element }) {
+  const token = localStorage.getItem('access_token')
+  if (!token) {
+    window.location.href = '/login'
+    return null
+  }
+  return children
+}
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/home" element={<Home />} />
+        <Route path="/home" element={<PrivateRoute><Home /></PrivateRoute>} />
         <Route path="/" element={<Login />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/my-library" element={<MyLibrary />} />
-        <Route path="/mypage" element={<MyPage />} />
-        <Route path="/notifications" element={<Notifications />} />
-        <Route path="/search" element={<Search />} />
-        <Route path="/book/:id" element={<BookDetail />} />
+        <Route path="/register/complete" element={<RegisterComplete />} />
+        <Route path="/my-library" element={<PrivateRoute><MyLibrary /></PrivateRoute>} />
+        <Route path="/mypage" element={<PrivateRoute><MyPage /></PrivateRoute>} />
+        <Route path="/notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
+        <Route path="/search" element={<PrivateRoute><Search /></PrivateRoute>} />
+        <Route path="/book/:id" element={<PrivateRoute><BookDetail /></PrivateRoute>} />
+        <Route path="/admin" element={<PrivateRoute><AdminPage /></PrivateRoute>} />
       </Routes>
     </BrowserRouter>
   )
