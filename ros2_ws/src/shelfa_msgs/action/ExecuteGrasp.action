@@ -1,0 +1,10 @@
+# [Goal] 마스터 -> 암 노드 (임무 하달)
+geometry_msgs/Pose[] grasp_waypoints
+---
+# [Result] 암 노드 -> 마스터 (최종 결과)
+bool success
+string error_message
+---
+# [Feedback] 암 노드 -> 마스터 (실시간 진행 상태 보고)
+string current_state  # 예: "APPROACHING", "GRASPING" 등
+float32 progress      # 0.0 ~ 100.0 진행률
