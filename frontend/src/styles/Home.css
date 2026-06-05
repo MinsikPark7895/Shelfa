@@ -316,6 +316,7 @@
 .wish-card {
   flex-shrink: 0;
   width: 140px;
+  overflow: hidden;
 }
 
 .wish-cover {
@@ -358,6 +359,11 @@
   font-size: 11px;
   color: var(--gray-500);
   margin-bottom: 6px;
+  height: 32px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .wish-badge {
@@ -377,6 +383,11 @@
 .badge-unavailable {
   background: #FFF5F5;
   color: #E03131;
+}
+
+.badge-myreserve {
+  background: #FFF9DB;
+  color: #E67700;
 }
 
 .wish-reserve-btn {
@@ -400,4 +411,24 @@
 
 .wish-reserve-btn:not(.disabled):active {
   opacity: 0.85;
+}
+
+.admin-nav-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  color: var(--gray-500);
+}
+
+.admin-nav-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.admin-nav-btn:active {
+  color: var(--navy);
 }

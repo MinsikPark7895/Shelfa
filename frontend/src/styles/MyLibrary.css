@@ -222,6 +222,11 @@
 
 .book-card-due.overdue {
   color: #E03131;
+  font-weight: 700;
+}
+
+.book-card-due.warning {
+  color: #E67700;
 }
 
 .book-card-bottom-row {
@@ -311,16 +316,18 @@
 }
 
 .book-card-locker-btn {
-  padding: 6px 14px;
-  background: var(--navy);
-  color: var(--white);
-  border: none;
+  padding: 8px 0;
+  background: var(--white);
+  color: var(--text-primary);
+  border: 1.5px solid var(--gray-400);
   border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
   font-family: 'Noto Sans KR', sans-serif;
   cursor: pointer;
-  width: fit-content;
+  width: 100%;
+  text-align: center;
+  align-self: center;
 }
 
 .book-card-locker-btn:active {
@@ -356,4 +363,93 @@
   border-radius: 4px;
   background: #FFF9DB;
   color: #E67700;
+}
+
+.book-card-storage-box {
+  margin-top: 8px;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #F8F9FA;
+  width: 40%;
+}
+
+.book-card-storage-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.book-card-storage-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.book-card-storage-label-row svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.book-card-storage-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding-left: 20px;
+}
+
+.book-card-storage-deadline {
+  font-size: 14px;
+  font-weight: 700;
+  color: #E03131;
+  padding-left: 20px;
+}
+
+.book-card-locker-btn {
+  padding: 8px 0;
+  background: var(--white);
+  color: var(--text-primary);
+  border: 1.5px solid var(--gray-400);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Noto Sans KR', sans-serif;
+  cursor: pointer;
+  width: 100%;
+  text-align: center;
+  align-self: center;
+}
+
+.book-card-locker-btn:active {
+  opacity: 0.85;
+}
+
+.book-card-storage-deadline-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 20px;
+}
+
+.book-card-cancel-btn {
+  padding: 3px 8px;
+  background: none;
+  color: var(--gray-500);
+  border: 1px solid var(--gray-300);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Noto Sans KR', sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.book-card-cancel-btn:active {
+  opacity: 0.7;
 }

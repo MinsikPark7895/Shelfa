@@ -6,7 +6,7 @@ import { apiFetch } from '../api'
 
 interface BookData {
   id: string; title: string; author: string; translator?: string; publisher: string
-  shelf_location: string; cover_image_url: string; status: string; synopsis?: string
+  shelf_location: string; cover_image_url: string; status: string; description?: string
 }
 
 function BookDetail() {
@@ -18,30 +18,29 @@ function BookDetail() {
   const [showModal, setShowModal] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
 
-  useEffect(() => { fetchBook(); checkFavorite() }, [id])
+  useEffect(() => { fetchBook() }, [id])
 
   const fetchBook = async () => {
     try {
-      // 책 검색으로 상세 조회 (isbn or title 기반 API가 없으므로 search 활용)
-      const res = await apiFetch(`/books/search?query=${id}&limit=1`)
-      if (res.ok) {
-        const data = await res.json()
-        const found = data.items?.find((b: any) => b.id === id)
-        if (found) {
-          setBook(found)
-          setDisplayStatus(found.status === 'available' ? 'available' : 'borrowed')
-        }
-      }
-    } catch { /* */ }
-  }
+      const [bookRes, loanRes, resRes] = await Promise.all([
+        apiFetch(`/books/${id}`),
+        apiFetch('/loans/me?limit=50'),
+        apiFetch('/reservations/me?limit=50'),
+      ])
+      if (!bookRes.ok) return
+      const book = await bookRes.json()
+      setBook(book)
+      setIsFavorite(book.is_favorited || false)
 
-  const checkFavorite = async () => {
-    try {
-      const res = await apiFetch('/favorites/me?limit=100')
-      if (res.ok) {
-        const data = await res.json()
-        setIsFavorite(data.items?.some((f: any) => f.book.id === id))
-      }
+      const loanData = loanRes.ok ? await loanRes.json() : { items: [] }
+      const resData = resRes.ok ? await resRes.json() : { items: [] }
+      const myLoanIds = new Set(loanData.items?.map((l: any) => l.book.id) || [])
+      const myResIds = new Set(resData.items?.filter((r: any) => r.status === 'PENDING').map((r: any) => r.book.id) || [])
+
+      if (myLoanIds.has(id)) setDisplayStatus('my_loan')
+      else if (myResIds.has(id)) setDisplayStatus('my_reservation')
+      else if (book.status === 'AVAILABLE') setDisplayStatus('available')
+      else setDisplayStatus('borrowed')
     } catch { /* */ }
   }
 
@@ -96,8 +95,8 @@ function BookDetail() {
         <div className="bookdetail-action">
           <button className={`bookdetail-reserve-btn ${sc.buttonDisabled ? 'disabled' : ''}`} onClick={() => !sc.buttonDisabled && setShowModal(true)} disabled={sc.buttonDisabled}>{sc.buttonText}</button>
         </div>
-        {book.synopsis && (
-          <div className="bookdetail-synopsis"><h3 className="bookdetail-synopsis-title">줄거리</h3><p className="bookdetail-synopsis-text">{book.synopsis}</p></div>
+        {book.description && (
+          <div className="bookdetail-synopsis"><h3 className="bookdetail-synopsis-title">줄거리</h3><p className="bookdetail-synopsis-text">{book.description}</p></div>
         )}
       </div>
       {showModal && (
