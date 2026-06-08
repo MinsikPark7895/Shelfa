@@ -1,0 +1,304 @@
+/* ===== 마이페이지 ===== */
+
+.mypage-content {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 90px;
+}
+
+/* 프로필 */
+.mypage-profile {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+}
+
+.mypage-profile-img {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.mypage-profile-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mypage-profile-img svg {
+  width: 100%;
+  height: 100%;
+}
+
+.mypage-profile-info {
+  flex: 1;
+}
+
+.mypage-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.mypage-user-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.mypage-edit-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.mypage-edit-btn svg {
+  width: 18px;
+  height: 18px;
+  color: var(--gray-500);
+}
+
+.mypage-membership {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mypage-membership-label {
+  font-size: 11px;
+  color: var(--gray-500);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.mypage-membership-no {
+  font-size: 14px;
+  color: var(--gray-600);
+  font-weight: 500;
+}
+
+/* QR 코드 */
+.mypage-qr-section {
+  margin: 0 20px;
+  background: #d4e4d4;
+  border-radius: 16px;
+  padding: 24px 32px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.mypage-qr-box {
+  width: 180px;
+  height: 180px;
+  margin-bottom: 16px;
+}
+
+.mypage-qr-placeholder {
+  width: 100%;
+  height: 100%;
+}
+
+.mypage-qr-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.mypage-qr-sub {
+  font-size: 12px;
+  color: var(--gray-500);
+  margin: 0;
+}
+
+/* 멤버십 현황 */
+.mypage-status-section {
+  padding: 20px 20px 0;
+}
+
+.mypage-status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.mypage-status-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.mypage-status-detail {
+  font-size: 13px;
+  color: var(--gray-500);
+  cursor: pointer;
+}
+
+.mypage-status-card {
+  background: var(--white);
+  border-radius: 12px;
+  padding: 16px 20px;
+  border: 1px solid var(--gray-200);
+}
+
+.mypage-borrow-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mypage-borrow-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--gray-600);
+  flex-shrink: 0;
+}
+
+.mypage-borrow-label {
+  font-size: 15px;
+  color: var(--gray-600);
+  flex: 1;
+}
+
+.mypage-borrow-count {
+  display: flex;
+  align-items: baseline;
+}
+
+.mypage-borrow-num {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--navy);
+}
+
+.mypage-borrow-max {
+  font-size: 14px;
+  color: var(--gray-500);
+}
+
+/* 도서 연체 주의 */
+.mypage-overdue {
+  margin: 16px 20px 0;
+  background: #e8f4ea;
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #c8dcc8;
+}
+
+.mypage-overdue-content {
+  flex: 1;
+}
+
+.mypage-overdue-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #2d5a3d;
+  margin: 0 0 4px;
+}
+
+.mypage-overdue-desc {
+  font-size: 12px;
+  color: #557755;
+  margin: 0;
+}
+
+.mypage-extension-btn {
+  background: var(--navy);
+  color: var(--white);
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  margin-left: 12px;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+
+.mypage-extension-btn:active {
+  opacity: 0.8;
+}
+
+/* 로그아웃 */
+.mypage-logout-btn {
+  display: block;
+  margin: 24px auto;
+  background: none;
+  border: none;
+  font-size: 15px;
+  color: var(--gray-500);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+
+.mypage-logout-btn:active {
+  color: var(--gray-600);
+}
+
+/* 모달 */
+.mypage-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.mypage-modal {
+  background: var(--white);
+  border-radius: 16px;
+  padding: 32px 28px 24px;
+  text-align: center;
+  max-width: 300px;
+  width: 80%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+.mypage-modal-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 20px;
+}
+
+.mypage-modal-btn {
+  background: var(--navy);
+  color: var(--white);
+  border: none;
+  border-radius: 10px;
+  padding: 10px 32px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+
+.mypage-modal-btn:active {
+  opacity: 0.8;
+}
+
+.mypage-qr-img {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+}

@@ -13,13 +13,27 @@ os.environ.setdefault("FLAGS_enable_pir_api", "0")
 from ultralytics import YOLO
 from paddleocr import PaddleOCR
 
-MODEL_PATH = "./runs/obb/runs/obb/book_spine_v1/weights/best.pt"
+import rclpy
+from rclpy.duration import Duration
+from rclpy.node import Node
+from geometry_msgs.msg import PointStamped, PoseStamped
+from tf2_ros import Buffer, TransformException, TransformListener
+import tf2_geometry_msgs  # noqa: F401 - PointStamped/PoseStamped TF 변환 등록용
 
-OUTPUT_DIR = "./realtime_results"
+try:
+    from dakae_interfaces.srv import MoveGripper
+except ImportError:
+    MoveGripper = None
+
+
+MODEL_PATH = str(Path(__file__).resolve().parent / "weights" / "best.pt")
+
+OUTPUT_DIR = str(Path(__file__).resolve().parent / "realtime_results")
 CROP_DIR = os.path.join(OUTPUT_DIR, "crops")
 TITLE_CROP_DIR = os.path.join(OUTPUT_DIR, "title_crops")
 JSON_PATH = os.path.join(OUTPUT_DIR, "realtime_ocr_results.json")
-FRAME_ID = "gripper_camera"
+ARUCO_INIT_JSON_PATH = os.path.join(OUTPUT_DIR, "aruco_initial_pose.json")
+FRAME_ID = "camera_color_optical_frame"
 COORDINATE_TYPE = "camera_frame"
 COORDINATE_UNIT = "meter"
 OCR_TARGET_LONG_SIDE = 960
@@ -34,6 +48,30 @@ BOOK_SPINE_MIN_SHORT_SIDE_PX = 8.0
 BOOK_SPINE_MIN_LONG_SIDE_PX = 40.0
 BOOK_SPINE_MIN_ASPECT_RATIO = 2.0
 BOOK_SPINE_MAX_ASPECT_RATIO = 25.0
+
+ARUCO_DICT_NAME = "DICT_4X4_50"
+ARUCO_TARGET_ID = 0
+ARUCO_MARKER_LENGTH_M = 0.05
+
+ROBOT_NAMESPACE = "/dsr01"
+BASE_FRAME = "base_link"
+CAMERA_FRAME = FRAME_ID
+TARGET_POSE_TOPIC = "/book_pick_target_pose"
+AUTO_MOVE_ENABLED = False
+AUTO_OCR_ON_TARGET = False
+PRE_GRASP_OFFSET_M = 0.08
+BOOK_TOP_OFFSET_M = 0.03
+MAX_MOVE_DISTANCE_M = 0.30
+MIN_TARGET_DEPTH_M = 0.20
+MAX_TARGET_DEPTH_M = 1.20
+APPROACH_AXIS = "x"
+APPROACH_SIGN = -1
+PRE_GRASP_ORIENTATION_XYZW = [0.0, 0.0, 0.0, 1.0]
+GRIPPER_CONTROL_ENABLED = False
+GRIPPER_SIMPLE_SERVICE = "gripper_move"
+GRIPPER_OPEN_STROKE = 0
+GRIPPER_CLOSE_STROKE = 500
+GRIPPER_TIMEOUT_SEC = 5.0
 
 
 def is_korean(ch):
@@ -182,6 +220,13 @@ def is_valid_camera_xyz(camera_xyz_m):
         camera_xyz_m is not None
         and len(camera_xyz_m) == 3
         and all(v is not None for v in camera_xyz_m)
+    )
+
+
+def is_finite_xyz(xyz):
+    return (
+        is_valid_camera_xyz(xyz)
+        and all(np.isfinite(float(v)) for v in xyz)
     )
 
 
@@ -635,7 +680,13 @@ def benchmark_ocr_sizes(ocr, crop, source_name, show_debug, target_sizes):
     return benchmark_results
 
 
-def save_json(results, trigger_info=None, show_log=False):
+def save_json(
+    results,
+    trigger_info=None,
+    show_log=False,
+    robot_targets=None,
+    latest_robot_target=None
+):
     data = {
         "timestamp": datetime.now().isoformat(),
         "frame_id": FRAME_ID,
@@ -650,12 +701,611 @@ def save_json(results, trigger_info=None, show_log=False):
     if trigger_info is not None:
         data["trigger"] = trigger_info
 
+    if robot_targets is not None:
+        data["robot_targets"] = robot_targets
+
+    if latest_robot_target is not None:
+        data["latest_robot_target"] = latest_robot_target
+
     with open(JSON_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
     if show_log:
         print("[Saved JSON]")
         print(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+def get_aruco_dictionary(dict_name):
+    aruco = cv2.aruco
+
+    dict_map = {
+        "DICT_4X4_50": aruco.DICT_4X4_50,
+        "DICT_4X4_100": aruco.DICT_4X4_100,
+        "DICT_5X5_50": aruco.DICT_5X5_50,
+        "DICT_5X5_100": aruco.DICT_5X5_100,
+        "DICT_6X6_50": aruco.DICT_6X6_50,
+        "DICT_6X6_100": aruco.DICT_6X6_100,
+    }
+
+    return aruco.getPredefinedDictionary(dict_map[dict_name])
+
+
+def make_camera_matrix_from_realsense_intrinsics(intrinsics):
+    camera_matrix = np.array([
+        [intrinsics.fx, 0.0, intrinsics.ppx],
+        [0.0, intrinsics.fy, intrinsics.ppy],
+        [0.0, 0.0, 1.0],
+    ], dtype=np.float64)
+
+    dist_coeffs = np.array(intrinsics.coeffs, dtype=np.float64)
+
+    return camera_matrix, dist_coeffs
+
+
+def rvec_tvec_to_matrix(rvec, tvec):
+    R, _ = cv2.Rodrigues(rvec)
+
+    T = np.eye(4, dtype=np.float64)
+    T[:3, :3] = R
+    T[:3, 3] = np.array(tvec, dtype=np.float64).reshape(3)
+
+    return T
+
+
+def detect_aruco_pose(frame, color_intrinsics):
+    """
+    RealSense RGB frame에서 ArUco marker를 인식하고,
+    camera frame 기준 marker pose를 반환합니다.
+    """
+    aruco = cv2.aruco
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    dictionary = get_aruco_dictionary(ARUCO_DICT_NAME)
+
+    if hasattr(aruco, "DetectorParameters"):
+        parameters = aruco.DetectorParameters()
+    else:
+        parameters = aruco.DetectorParameters_create()
+
+    corners, ids, _ = aruco.detectMarkers(
+        gray,
+        dictionary,
+        parameters=parameters
+    )
+
+    result = {
+        "found": False,
+        "marker_id": None,
+        "rvec": None,
+        "tvec_m": None,
+        "T_camera_marker": None,
+        "corners": None,
+    }
+
+    if ids is None or len(ids) == 0:
+        return result
+
+    ids_flat = ids.flatten()
+
+    target_index = None
+    for idx, marker_id in enumerate(ids_flat):
+        if int(marker_id) == int(ARUCO_TARGET_ID):
+            target_index = idx
+            break
+
+    if target_index is None:
+        return result
+
+    camera_matrix, dist_coeffs = make_camera_matrix_from_realsense_intrinsics(
+        color_intrinsics
+    )
+
+    target_corners = [corners[target_index]]
+
+    rvecs, tvecs, _ = aruco.estimatePoseSingleMarkers(
+        target_corners,
+        ARUCO_MARKER_LENGTH_M,
+        camera_matrix,
+        dist_coeffs
+    )
+
+    rvec = rvecs[0][0]
+    tvec = tvecs[0][0]
+    T_camera_marker = rvec_tvec_to_matrix(rvec, tvec)
+
+    result.update({
+        "found": True,
+        "marker_id": int(ARUCO_TARGET_ID),
+        "rvec": [round(float(v), 6) for v in rvec],
+        "tvec_m": [round(float(v), 4) for v in tvec],
+        "T_camera_marker": T_camera_marker.tolist(),
+        "corners": target_corners,
+    })
+
+    return result
+
+
+def draw_aruco_pose(vis, aruco_pose, color_intrinsics):
+    if not aruco_pose["found"]:
+        cv2.putText(
+            vis,
+            "ArUco: not found",
+            (20, 60),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 0, 255),
+            2
+        )
+        return vis
+
+    aruco = cv2.aruco
+
+    camera_matrix, dist_coeffs = make_camera_matrix_from_realsense_intrinsics(
+        color_intrinsics
+    )
+
+    corners = aruco_pose["corners"]
+    rvec = np.array(aruco_pose["rvec"], dtype=np.float64)
+    tvec = np.array(aruco_pose["tvec_m"], dtype=np.float64)
+
+    aruco.drawDetectedMarkers(vis, corners)
+
+    try:
+        cv2.drawFrameAxes(
+            vis,
+            camera_matrix,
+            dist_coeffs,
+            rvec,
+            tvec,
+            ARUCO_MARKER_LENGTH_M * 0.7
+        )
+    except Exception:
+        pass
+
+    x, y, z = aruco_pose["tvec_m"]
+
+    cv2.putText(
+        vis,
+        f"ArUco ID:{aruco_pose['marker_id']} xyz(camera): {x:.3f}, {y:.3f}, {z:.3f}m",
+        (20, 60),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.65,
+        (0, 255, 255),
+        2
+    )
+
+    return vis
+
+
+def save_aruco_initial_pose(aruco_pose):
+    data = {
+        "timestamp": datetime.now().isoformat(),
+        "frame_id": FRAME_ID,
+        "coordinate_type": "camera_frame",
+        "unit": "meter",
+        "aruco": {
+            "dict": ARUCO_DICT_NAME,
+            "target_id": ARUCO_TARGET_ID,
+            "marker_length_m": ARUCO_MARKER_LENGTH_M,
+            "tvec_m": aruco_pose["tvec_m"],
+            "rvec": aruco_pose["rvec"],
+            "T_camera_marker": aruco_pose["T_camera_marker"],
+        },
+        "meaning": "This pose represents marker pose relative to the gripper camera frame."
+    }
+
+    with open(ARUCO_INIT_JSON_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    print("[ArUco Init Saved]")
+    print(json.dumps(data, ensure_ascii=False, indent=2))
+    print(f"ArUco 초기 위치 저장: {ARUCO_INIT_JSON_PATH}")
+
+
+class BookVisionRobotNode(Node):
+    """
+    비전 코드 안에서 함께 돌리는 ROS2 노드.
+    - camera_color_optical_frame 기준 3D point를 base frame으로 변환
+    - RViz 확인용 pre_grasp PoseStamped publish
+    - 실제 이동 함수는 안전을 위해 기본 비활성화
+    """
+
+    def __init__(self):
+        super().__init__("book_vision_robot_node")
+        self.tf_buffer = Buffer()
+        try:
+            self.tf_listener = TransformListener(
+                self.tf_buffer,
+                self,
+                spin_thread=True,
+            )
+        except TypeError:
+            self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.target_pose_pub = self.create_publisher(
+            PoseStamped,
+            TARGET_POSE_TOPIC,
+            10
+        )
+        self.last_published_pose = None
+        self.gripper_client = None
+        if MoveGripper is not None:
+            self.gripper_client = self.create_client(
+                MoveGripper,
+                GRIPPER_SIMPLE_SERVICE
+            )
+
+    def transform_camera_xyz_to_base(self, camera_xyz_m):
+        if not is_finite_xyz(camera_xyz_m):
+            print("[ROS2 TF] camera_xyz_m invalid")
+            return None
+
+        point = PointStamped()
+        point.header.stamp = self.get_clock().now().to_msg()
+        point.header.frame_id = CAMERA_FRAME
+        point.point.x = float(camera_xyz_m[0])
+        point.point.y = float(camera_xyz_m[1])
+        point.point.z = float(camera_xyz_m[2])
+
+        try:
+            transformed = self.tf_buffer.transform(
+                point,
+                BASE_FRAME,
+                timeout=Duration(seconds=0.5)
+            )
+        except TransformException as exc:
+            print(f"[ROS2 TF] {CAMERA_FRAME} -> {BASE_FRAME} 변환 실패: {exc}")
+            return None
+
+        return [
+            round(float(transformed.point.x), 4),
+            round(float(transformed.point.y), 4),
+            round(float(transformed.point.z), 4),
+        ]
+
+    def publish_target_pose(self, pose_stamped):
+        pose_stamped.header.stamp = self.get_clock().now().to_msg()
+        self.target_pose_pub.publish(pose_stamped)
+        self.last_published_pose = pose_stamped
+        print(f"[ROS2 Publish] target pose published: {TARGET_POSE_TOPIC}")
+
+    def move_to_pre_grasp(self, pose_stamped):
+        if not AUTO_MOVE_ENABLED:
+            print("AUTO_MOVE_ENABLED=False라 실제 이동하지 않음")
+            return False
+
+        if not is_pose_finite(pose_stamped):
+            print("[Robot Move] pose에 NaN/Inf가 있어 이동하지 않음")
+            return False
+
+        if self.last_published_pose is not None:
+            distance = pose_distance_m(self.last_published_pose, pose_stamped)
+            if distance > MAX_MOVE_DISTANCE_M:
+                print(
+                    f"[Robot Move] 이동 후보 거리 {distance:.3f}m > "
+                    f"{MAX_MOVE_DISTANCE_M:.3f}m, 이동 차단"
+                )
+                return False
+
+        return call_doosan_move_pose(pose_stamped)
+
+    def move_gripper(self, stroke):
+        if not GRIPPER_CONTROL_ENABLED:
+            print("GRIPPER_CONTROL_ENABLED=False라 그리퍼를 움직이지 않음")
+            return False
+
+        if self.gripper_client is None:
+            print("[Gripper] dakae_interfaces/MoveGripper client가 없습니다.")
+            return False
+
+        if not self.gripper_client.wait_for_service(timeout_sec=1.0):
+            print(f"[Gripper] {GRIPPER_SIMPLE_SERVICE} 서비스가 없습니다.")
+            return False
+
+        req = MoveGripper.Request()
+        req.stroke = int(stroke)
+        future = self.gripper_client.call_async(req)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=GRIPPER_TIMEOUT_SEC)
+
+        if not future.done() or future.result() is None:
+            print("[Gripper] 응답 없음")
+            return False
+
+        res = future.result()
+        print(f"[Gripper] stroke={stroke} success={res.success} msg={res.message}")
+        return bool(res.success)
+
+    def open_gripper(self):
+        return self.move_gripper(GRIPPER_OPEN_STROKE)
+
+    def close_gripper(self):
+        return self.move_gripper(GRIPPER_CLOSE_STROKE)
+
+
+def compute_book_top_pixel_from_obb(points):
+    """
+    OBB 4점에서 긴 축을 찾고, 이미지 y값이 작은 쪽을 책 상단으로 본다.
+    반환 좌표는 depth lookup에 바로 쓰기 좋게 float pixel로 유지한다.
+    """
+    rect = order_points(np.array(points, dtype=np.float32))
+    tl, tr, br, bl = rect
+
+    edge_top = (tl, tr)
+    edge_bottom = (bl, br)
+    width = float((np.linalg.norm(tr - tl) + np.linalg.norm(br - bl)) / 2.0)
+    height = float((np.linalg.norm(bl - tl) + np.linalg.norm(br - tr)) / 2.0)
+
+    if height >= width:
+        end_a = (tl + tr) / 2.0
+        end_b = (bl + br) / 2.0
+    else:
+        end_a = (tl + bl) / 2.0
+        end_b = (tr + br) / 2.0
+        edge_top = (tl, bl)
+        edge_bottom = (tr, br)
+
+    if end_a[1] <= end_b[1]:
+        top_center = end_a
+        bottom_center = end_b
+    else:
+        top_center = end_b
+        bottom_center = end_a
+        edge_top, edge_bottom = edge_bottom, edge_top
+
+    long_vec = bottom_center - top_center
+    angle_deg = float(np.degrees(np.arctan2(long_vec[1], long_vec[0])))
+    center = rect.mean(axis=0)
+
+    return {
+        "top_center_px": [
+            round(float(top_center[0]), 1),
+            round(float(top_center[1]), 1),
+        ],
+        "bottom_center_px": [
+            round(float(bottom_center[0]), 1),
+            round(float(bottom_center[1]), 1),
+        ],
+        "center_px": [
+            round(float(center[0]), 1),
+            round(float(center[1]), 1),
+        ],
+        "top_edge_px": [
+            [round(float(edge_top[0][0]), 1), round(float(edge_top[0][1]), 1)],
+            [round(float(edge_top[1][0]), 1), round(float(edge_top[1][1]), 1)],
+        ],
+        "long_axis_angle_deg": round(angle_deg, 1),
+    }
+
+
+def compute_book_top_camera_xyz(depth_frame, color_intrinsics, points):
+    top_info = compute_book_top_pixel_from_obb(points)
+    top_px = top_info["top_center_px"]
+    camera_xyz_m = deproject_pixel_to_camera_xyz(
+        depth_frame,
+        color_intrinsics,
+        top_px[0],
+        top_px[1]
+    )
+
+    return top_info, camera_xyz_m, is_valid_camera_xyz(camera_xyz_m)
+
+
+def make_pre_grasp_pose(base_xyz_m):
+    pose = PoseStamped()
+    pose.header.frame_id = BASE_FRAME
+
+    position = {
+        "x": float(base_xyz_m[0]),
+        "y": float(base_xyz_m[1]),
+        "z": float(base_xyz_m[2]) + BOOK_TOP_OFFSET_M,
+    }
+
+    if APPROACH_AXIS not in position:
+        raise ValueError(f"지원하지 않는 APPROACH_AXIS: {APPROACH_AXIS}")
+
+    position[APPROACH_AXIS] += float(APPROACH_SIGN) * PRE_GRASP_OFFSET_M
+
+    pose.pose.position.x = position["x"]
+    pose.pose.position.y = position["y"]
+    pose.pose.position.z = position["z"]
+    pose.pose.orientation.x = PRE_GRASP_ORIENTATION_XYZW[0]
+    pose.pose.orientation.y = PRE_GRASP_ORIENTATION_XYZW[1]
+    pose.pose.orientation.z = PRE_GRASP_ORIENTATION_XYZW[2]
+    pose.pose.orientation.w = PRE_GRASP_ORIENTATION_XYZW[3]
+
+    return pose
+
+
+def pose_to_dict(pose_stamped):
+    pose = pose_stamped.pose
+    return {
+        "position": {
+            "x": round(float(pose.position.x), 4),
+            "y": round(float(pose.position.y), 4),
+            "z": round(float(pose.position.z), 4),
+        },
+        "orientation": {
+            "x": round(float(pose.orientation.x), 6),
+            "y": round(float(pose.orientation.y), 6),
+            "z": round(float(pose.orientation.z), 6),
+            "w": round(float(pose.orientation.w), 6),
+        }
+    }
+
+
+def is_pose_finite(pose_stamped):
+    values = [
+        pose_stamped.pose.position.x,
+        pose_stamped.pose.position.y,
+        pose_stamped.pose.position.z,
+        pose_stamped.pose.orientation.x,
+        pose_stamped.pose.orientation.y,
+        pose_stamped.pose.orientation.z,
+        pose_stamped.pose.orientation.w,
+    ]
+    return all(np.isfinite(float(v)) for v in values)
+
+
+def pose_distance_m(pose_a, pose_b):
+    a = pose_a.pose.position
+    b = pose_b.pose.position
+    return float(np.linalg.norm([
+        float(a.x) - float(b.x),
+        float(a.y) - float(b.y),
+        float(a.z) - float(b.z),
+    ]))
+
+
+def call_doosan_move_pose(pose_stamped):
+    """
+    실제 로봇 이동 연결 지점.
+
+    Doosan ROS2 서비스 이름/타입은 설치 버전과 namespace에 따라 다를 수 있다.
+    먼저 아래 명령으로 실제 인터페이스를 확인한 뒤 이 함수를 채운다.
+
+    ros2 service list | grep move
+    ros2 service list | grep motion
+    ros2 service type /dsr01/motion/move_line
+    ros2 interface show dsr_msgs2/srv/MoveLine
+    """
+    print("[Robot Move] TODO: Doosan move_line/MoveIt2 호출부를 환경에 맞게 연결해야 합니다.")
+    print(json.dumps(pose_to_dict(pose_stamped), ensure_ascii=False, indent=2))
+    return False
+
+
+def make_robot_target_payload(
+    selected_book,
+    title_candidate,
+    top_info,
+    camera_xyz_m,
+    base_xyz_m,
+    pre_grasp_pose
+):
+    return {
+        "timestamp": datetime.now().isoformat(),
+        "base_frame": BASE_FRAME,
+        "camera_frame": CAMERA_FRAME,
+        "robot_namespace": ROBOT_NAMESPACE,
+        "target_type": "book_top_pre_grasp",
+        "book_index": int(selected_book["index"]),
+        "book_detection_confidence": round(float(selected_book["confidence"]), 3),
+        "title_candidate": title_candidate,
+        "book_top_pixel": top_info["top_center_px"],
+        "book_top_camera_xyz_m": camera_xyz_m,
+        "book_top_base_xyz_m": base_xyz_m,
+        "book_top_geometry": top_info,
+        "pre_grasp_pose_base": pose_to_dict(pre_grasp_pose),
+        "auto_move_enabled": bool(AUTO_MOVE_ENABLED),
+        "safety": {
+            "pre_grasp_offset_m": PRE_GRASP_OFFSET_M,
+            "book_top_offset_m": BOOK_TOP_OFFSET_M,
+            "max_move_distance_m": MAX_MOVE_DISTANCE_M,
+            "min_target_depth_m": MIN_TARGET_DEPTH_M,
+            "max_target_depth_m": MAX_TARGET_DEPTH_M,
+            "approach_axis": APPROACH_AXIS,
+            "approach_sign": APPROACH_SIGN,
+        }
+    }
+
+
+def get_target_title_candidate(ocr, frame, selected_book):
+    if not AUTO_OCR_ON_TARGET:
+        return "not_checked"
+
+    crop = crop_obb(frame, selected_book["points"], padding=15)
+    if crop is None:
+        return "ocr_crop_failed"
+
+    title_crop, _ = extract_main_title_region(crop)
+    ocr_input = title_crop if title_crop is not None and title_crop.size > 0 else crop
+
+    ocr_result, elapsed_ms = run_timed_ocr(
+        ocr,
+        ocr_input,
+        source_name="target_book",
+        show_debug=False,
+        target_long_side=None
+    )
+    title = normalize_korean_title_text(ocr_result["text"])
+    print(
+        f"[Target OCR] title=\"{title}\" "
+        f"score={ocr_result['score']:.2f} elapsed={elapsed_ms:.1f}ms"
+    )
+    return title if title else "ocr_not_detected"
+
+
+def build_and_publish_robot_target(
+    robot_node,
+    latest_frame,
+    latest_depth_frame,
+    color_intrinsics,
+    latest_obb_data,
+    latest_aruco_pose,
+    ocr=None
+):
+    if not latest_aruco_pose.get("found"):
+        print("[Target] ArUco marker가 보이지 않아 목표 pose를 만들지 않음")
+        return None, None
+
+    if latest_frame is None or latest_depth_frame is None:
+        print("[Target] 최신 frame/depth가 없어 목표 pose를 만들지 않음")
+        return None, None
+
+    if not latest_obb_data:
+        print("[Target] 인식된 책등이 없어 목표 pose를 만들지 않음")
+        return None, None
+
+    selected_book = max(latest_obb_data, key=lambda item: item["confidence"])
+    det_conf = float(selected_book["confidence"])
+    if det_conf < DISPLAY_CONF_THRESHOLD:
+        print(f"[Target] detection confidence {det_conf:.2f}가 기준보다 낮음")
+        return None, None
+
+    top_info, camera_xyz_m, depth_valid = compute_book_top_camera_xyz(
+        latest_depth_frame,
+        color_intrinsics,
+        selected_book["points"]
+    )
+
+    if not depth_valid:
+        print(f"[Target] 책 상단 depth invalid: pixel={top_info['top_center_px']}")
+        return None, None
+
+    depth_m = float(camera_xyz_m[2])
+    if depth_m < MIN_TARGET_DEPTH_M or depth_m > MAX_TARGET_DEPTH_M:
+        print(
+            f"[Target] camera z={depth_m:.3f}m가 안전 범위 "
+            f"{MIN_TARGET_DEPTH_M:.2f}~{MAX_TARGET_DEPTH_M:.2f}m 밖이라 중단"
+        )
+        return None, None
+
+    for _ in range(3):
+        rclpy.spin_once(robot_node, timeout_sec=0.02)
+
+    base_xyz_m = robot_node.transform_camera_xyz_to_base(camera_xyz_m)
+    if base_xyz_m is None:
+        return None, None
+
+    pre_grasp_pose = make_pre_grasp_pose(base_xyz_m)
+    if not is_pose_finite(pre_grasp_pose):
+        print("[Target] pre_grasp pose에 NaN/Inf가 있어 publish하지 않음")
+        return None, None
+
+    title_candidate = get_target_title_candidate(ocr, latest_frame, selected_book)
+    payload = make_robot_target_payload(
+        selected_book=selected_book,
+        title_candidate=title_candidate,
+        top_info=top_info,
+        camera_xyz_m=camera_xyz_m,
+        base_xyz_m=base_xyz_m,
+        pre_grasp_pose=pre_grasp_pose
+    )
+
+    robot_node.publish_target_pose(pre_grasp_pose)
+
+    print("[Target Candidate]")
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+    return payload, pre_grasp_pose
 
 
 def init_realsense(width=1280, height=720, fps=30):
@@ -1001,6 +1651,11 @@ def main():
     os.makedirs(CROP_DIR, exist_ok=True)
     os.makedirs(TITLE_CROP_DIR, exist_ok=True)
 
+    pipeline = None
+    if not rclpy.ok():
+        rclpy.init(args=None)
+    robot_node = BookVisionRobotNode()
+
     print("YOLO OBB 모델 로드 중...")
     yolo_model = YOLO(MODEL_PATH)
 
@@ -1014,21 +1669,43 @@ def main():
     )
     print("PaddleOCR 준비 완료")
 
-    pipeline, align, color_intrinsics = init_realsense(width=1280, height=720, fps=30)
+    try:
+        pipeline, align, color_intrinsics = init_realsense(width=1280, height=720, fps=30)
+    except Exception:
+        robot_node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+        raise
 
     print("\nRealSense 실시간 실행 시작")
     print("s 키: 현재 화면 OCR 실행")
+    print("i 키: 현재 ArUco pose를 초기 위치로 저장")
+    print("g 키: 책 상단 pre_grasp target pose 계산/publish")
+    print("m 키: AUTO_MOVE_ENABLED=True일 때 마지막 target으로 실제 이동 시도")
     print("q 키: 종료")
 
     latest_obb_data = []
     latest_frame = None
     latest_depth_frame = None
+    latest_aruco_pose = {
+        "found": False,
+        "marker_id": None,
+        "rvec": None,
+        "tvec_m": None,
+        "T_camera_marker": None,
+        "corners": None,
+    }
     saved_results = []
+    robot_targets = []
+    last_robot_target = None
+    last_pre_grasp_pose = None
+    last_target_status = "target: not published"
     frame_count = 0
     ocr_busy = False
 
     try:
         while True:
+            rclpy.spin_once(robot_node, timeout_sec=0.0)
             frame, depth_frame, _ = get_realsense_frames(pipeline, align)
 
             if frame is None:
@@ -1050,6 +1727,7 @@ def main():
 
             vis = frame.copy()
             latest_obb_data = []
+            latest_aruco_pose = detect_aruco_pose(frame, color_intrinsics)
 
             if yolo_results[0].obb is not None:
                 for i, obb in enumerate(yolo_results[0].obb):
@@ -1109,6 +1787,36 @@ def main():
                         1
                     )
 
+            draw_aruco_pose(vis, latest_aruco_pose, color_intrinsics)
+
+            selected_info = "selected book: none"
+            if latest_obb_data:
+                best_book = max(latest_obb_data, key=lambda item: item["confidence"])
+                selected_info = (
+                    f"selected book #{best_book['index']} "
+                    f"conf={best_book['confidence']:.2f}"
+                )
+
+            cv2.putText(
+                vis,
+                selected_info,
+                (20, 90),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (255, 255, 255),
+                2
+            )
+
+            cv2.putText(
+                vis,
+                last_target_status,
+                (20, 120),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (255, 255, 0),
+                2
+            )
+
             elapsed = time.time() - start
             fps = 1.0 / elapsed if elapsed > 0 else 0.0
 
@@ -1117,7 +1825,8 @@ def main():
                 (
                     f"RealSense YOLO FPS: {fps:.1f} | "
                     f"books: {len(latest_obb_data)} | "
-                    f"shown>={DISPLAY_CONF_THRESHOLD:.2f} | s: OCR | q: quit"
+                    f"shown>={DISPLAY_CONF_THRESHOLD:.2f} | "
+                    f"g: target | m: move | i: init | s: OCR | q: quit"
                 ),
                 (20, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
@@ -1132,6 +1841,51 @@ def main():
 
             if key == ord("q"):
                 break
+
+            if key == ord("i") or key == ord("a"):
+                if latest_aruco_pose["found"]:
+                    save_aruco_initial_pose(latest_aruco_pose)
+                else:
+                    print("저장할 ArUco marker를 찾지 못했습니다.")
+
+            if key == ord("g"):
+                target_payload, pre_grasp_pose = build_and_publish_robot_target(
+                    robot_node=robot_node,
+                    latest_frame=latest_frame,
+                    latest_depth_frame=latest_depth_frame,
+                    color_intrinsics=color_intrinsics,
+                    latest_obb_data=latest_obb_data,
+                    latest_aruco_pose=latest_aruco_pose,
+                    ocr=ocr
+                )
+
+                if target_payload is not None:
+                    last_robot_target = target_payload
+                    last_pre_grasp_pose = pre_grasp_pose
+                    robot_targets.append(target_payload)
+                    top_xyz = target_payload["book_top_camera_xyz_m"]
+                    last_target_status = (
+                        f"target published | book #{target_payload['book_index']} "
+                        f"top xyz={top_xyz[0]:.3f},{top_xyz[1]:.3f},{top_xyz[2]:.3f}m"
+                    )
+                    save_json(
+                        saved_results,
+                        trigger_info={
+                            "type": "manual_key_g",
+                            "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S"),
+                            "mode": "book_top_pre_grasp_target"
+                        },
+                        robot_targets=robot_targets,
+                        latest_robot_target=last_robot_target
+                    )
+                else:
+                    last_target_status = "target publish failed"
+
+            if key == ord("m"):
+                if last_pre_grasp_pose is None:
+                    print("마지막 pre_grasp pose가 없어 이동할 수 없습니다. 먼저 g 키를 누르세요.")
+                else:
+                    robot_node.move_to_pre_grasp(last_pre_grasp_pose)
 
             if check_ocr_trigger(key) and not ocr_busy:
                 if latest_frame is None or not latest_obb_data:
@@ -1157,17 +1911,27 @@ def main():
                             "timestamp": timestamp,
                             "mode": "single_shot_ocr"
                         },
-                        show_log=True
+                        show_log=True,
+                        robot_targets=robot_targets,
+                        latest_robot_target=last_robot_target
                     )
                     print(f"JSON 저장: {JSON_PATH}")
                 finally:
                     ocr_busy = False
 
     finally:
-        pipeline.stop()
+        if pipeline is not None:
+            pipeline.stop()
         cv2.destroyAllWindows()
 
-        save_json(saved_results)
+        save_json(
+            saved_results,
+            robot_targets=robot_targets,
+            latest_robot_target=last_robot_target
+        )
+        robot_node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
         print("종료 완료")
         print(f"최종 JSON: {JSON_PATH}")
 

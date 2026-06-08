@@ -636,3 +636,10 @@ AMENT_IGNORE
 # End of https://www.toptal.com/developers/gitignore/api/ros2
 
 .vscode/
+# Shelfa runtime outputs
+realtime_results/
+paddle_ocr_output/
+easyocr_results/
+crop_results_130324/
+runs/
+.vscode/browse.vc.db*

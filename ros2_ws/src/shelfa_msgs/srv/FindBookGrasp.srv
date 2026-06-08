@@ -1,0 +1,7 @@
+# [Request] 마스터 -> 비전 (요청 데이터)
+string book_id
+---
+# [Response] 비전 -> 마스터 (응답 데이터)
+bool success
+string message
+geometry_msgs/Pose[] grasp_waypoints

@@ -1,53 +1,43 @@
 # Vision Module
 
-## Overview
+This folder contains Shelfa's book-spine vision pipeline. It focuses on RealSense capture, YOLO-OBB book-spine detection, PaddleOCR title extraction, depth/TF validation, and ArUco marker TF publishing.
 
-This folder contains the vision pipeline for book-spine detection and OCR.
+## Main Files
 
-Current pipeline:
-1. RealSense color/depth stream
-2. YOLO-OBB book-spine detection
-3. 3D point extraction in `gripper_camera` / `camera_frame`
-4. OCR on key trigger (`s`)
-5. Result export to JSON
+- `realtime_yolo_paddle_ocr.py`: live RealSense + YOLO-OBB + PaddleOCR pipeline
+- `book_scan_after_alignment.py`: scans books after an ArUco alignment payload is available
+- `vision_pipeline_utils.py`: shared OBB/keypoint/depth helpers
+- `aruco_realsense_tf_publisher.py`: publishes ArUco marker TF from RealSense color frames
+- `weights/best.pt`: YOLO-OBB book-spine model
 
-## Main File
-
-- `realtime_yolo_paddle_ocr.py`
-- `weights/best.pt`
-
-This script:
-- runs real-time YOLO-OBB detection
-- displays per-book `camera_xyz_m`
-- runs OCR only when `s` is pressed
-- stores crop, title crop, and JSON results
-- filters weak OCR results and invalid spine-like detections
-
-## Notes
-
-- Coordinate frame: `gripper_camera`
-- Coordinate type: `camera_frame`
-- Unit: `meter`
-- OCR recheck uses `960` resize only when the original OCR text exists but DB matching is uncertain
-- If original OCR detects no text, the candidate is rejected without 960 recheck
-
-## Excluded Outputs
-
-The following runtime outputs should not be committed:
-- `realtime_results/`
-- `paddle_ocr_output/`
-- `easyocr_results/`
-- `crop_results_130324/`
-- validation/prediction output folders under `runs/`
-
-## Typical Run
+## Typical Runs
 
 ```bash
 python3 vision/realtime_yolo_paddle_ocr.py
 ```
 
-If needed, update the model path inside the script to point to:
-
-```text
-vision/weights/best.pt
+```bash
+python3 vision/book_scan_after_alignment.py \
+  --alignment-payload-json vision/realtime_results/alignment_payload.json \
+  --target-title 제3인류
 ```
+
+```bash
+python3 vision/book_scan_after_alignment.py \
+  --use-mock-alignment \
+  --target-title 제3인류
+```
+
+For ROS 2 ArUco TF publishing, run the file inside an environment where `rclpy`, `tf2_ros`, OpenCV ArUco, and RealSense are available.
+
+## Runtime Outputs
+
+Do not commit runtime output folders or generated caches:
+
+- `vision/realtime_results/`
+- `realtime_results/`
+- `paddle_ocr_output/`
+- `easyocr_results/`
+- `crop_results_130324/`
+- `__pycache__/`
+- ROS `build/`, `install/`, `log/` folders
