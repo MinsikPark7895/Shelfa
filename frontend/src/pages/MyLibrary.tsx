@@ -112,7 +112,7 @@ function MyLibrary() {
     } catch { alert('오류가 발생했습니다.') } finally { setIsProcessing(false) }
   }
 
-  const getDday = (d: string) => { const diff = Math.ceil((new Date(d).getTime() - Date.now()) / 86400000); return `D-${Math.max(0, diff)}` }
+
   const formatDate = (d: string) => { const dt = new Date(d); return `${dt.getFullYear()}.${String(dt.getMonth() + 1).padStart(2, '0')}.${String(dt.getDate()).padStart(2, '0')}` }
   const getPickupDeadline = (d: string) => {
     const dt = new Date(d)
