@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import '../styles/BookDetail.css'
+import '../styles/AdminPage.css'
 import ReservationModal from './ReservationModal'
 import { apiFetch } from '../api'
 
@@ -17,17 +18,22 @@ function BookDetail() {
   const [isFavorite, setIsFavorite] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+  const [showGearMenu, setShowGearMenu] = useState(false)
+  const [showDevNotice, setShowDevNotice] = useState(false)
+  const isAdmin = JSON.parse(localStorage.getItem('user') || '{}').role === 'admin'
 
   useEffect(() => { fetchBook() }, [id])
 
   const fetchBook = async () => {
     try {
+      setLoadError(false)
       const [bookRes, loanRes, resRes] = await Promise.all([
         apiFetch(`/books/${id}`),
         apiFetch('/loans/me?limit=50'),
         apiFetch('/reservations/me?limit=50'),
       ])
-      if (!bookRes.ok) return
+      if (!bookRes.ok) { setLoadError(true); return }
       const book = await bookRes.json()
       setBook(book)
       setIsFavorite(book.is_favorited || false)
@@ -41,7 +47,7 @@ function BookDetail() {
       else if (myResIds.has(id)) setDisplayStatus('my_reservation')
       else if (book.status === 'AVAILABLE') setDisplayStatus('available')
       else setDisplayStatus('borrowed')
-    } catch { /* */ }
+    } catch { setLoadError(true) }
   }
 
   const handleFavoriteToggle = async () => {
@@ -55,8 +61,18 @@ function BookDetail() {
         await apiFetch(`/favorites/${id}`, { method: 'POST' })
         setIsFavorite(true)
       }
-    } catch { /* */ } finally { setIsProcessing(false) }
+    } catch { alert('오류가 발생했습니다.') } finally { setIsProcessing(false) }
   }
+
+  if (loadError) return (
+    <div className="page-container">
+      <div className="top-nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /><path d="M8 7h6" /><path d="M8 11h4" /></svg><span className="logo-text">XYZ 도서관</span></div>
+      <div style={{ textAlign: 'center', marginTop: '40%' }}>
+        <p style={{ color: '#888', marginBottom: '12px' }}>도서 정보를 불러올 수 없습니다.</p>
+        <button className="refresh-btn" style={{ fontSize: '14px' }} onClick={fetchBook}>↺ 새로고침</button>
+      </div>
+    </div>
+  )
 
   if (!book) return <div className="page-container"><div className="top-nav"><span className="logo-text">로딩중...</span></div></div>
 
@@ -72,10 +88,28 @@ function BookDetail() {
     <div className="page-container">
       <div className="top-nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /><path d="M8 7h6" /><path d="M8 11h4" /></svg><span className="logo-text">XYZ 도서관</span></div>
       <div className="bookdetail-content">
-        <div className="bookdetail-header"><h1 className="bookdetail-title">도서상세</h1>
-          <button className="bookdetail-favorite-btn" onClick={handleFavoriteToggle}>
-            <svg viewBox="0 0 24 24" fill={isFavorite ? 'var(--navy)' : 'none'} stroke="var(--navy)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>
-          </button>
+        <div className="bookdetail-header" onClick={() => setShowGearMenu(false)}><h1 className="bookdetail-title">도서상세</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {isAdmin && (
+              <div className="admin-gear-wrap">
+                <button className="bookdetail-favorite-btn" style={{ WebkitTapHighlightColor: 'transparent' }} onClick={(e) => { e.stopPropagation(); setShowGearMenu(v => !v) }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="var(--navy)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                </button>
+                {showGearMenu && (
+                  <div className="admin-gear-dropdown" onClick={(e) => e.stopPropagation()}>
+                    <button className="admin-gear-item" onClick={() => { setShowGearMenu(false); setShowDevNotice(true) }}>도서 정보 수정</button>
+                    <button className="admin-gear-item admin-gear-item--danger" onClick={() => { setShowGearMenu(false); setShowDevNotice(true) }}>도서 삭제</button>
+                  </div>
+                )}
+              </div>
+            )}
+            <button className="bookdetail-favorite-btn" style={{ WebkitTapHighlightColor: 'transparent' }} onClick={(e) => { e.stopPropagation(); handleFavoriteToggle() }}>
+              <svg viewBox="0 0 24 24" fill={isFavorite ? 'var(--navy)' : 'none'} stroke="var(--navy)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>
+            </button>
+          </div>
         </div>
         <div className="bookdetail-cover-section">
           <div className="bookdetail-cover">
@@ -99,6 +133,20 @@ function BookDetail() {
           <div className="bookdetail-synopsis"><h3 className="bookdetail-synopsis-title">줄거리</h3><p className="bookdetail-synopsis-text">{book.description}</p></div>
         )}
       </div>
+      {showDevNotice && (
+        <div className="modal-overlay" onClick={() => setShowDevNotice(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close-btn" onClick={() => setShowDevNotice(false)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            </button>
+            <div className="modal-result">
+              <div className="modal-result-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#aaa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg></div>
+              <p className="modal-result-text">추후 개발 예정입니다.</p>
+              <button className="modal-btn-outline" onClick={() => setShowDevNotice(false)}>확인</button>
+            </div>
+          </div>
+        </div>
+      )}
       {showModal && (
         <ReservationModal
           bookId={String(id)}

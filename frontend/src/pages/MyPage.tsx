@@ -7,6 +7,7 @@ function MyPage() {
   const navigate = useNavigate()
   const [borrowedCount, setBorrowedCount] = useState(0)
   const [maxBorrow, setMaxBorrow] = useState(5)
+  const [summaryError, setSummaryError] = useState(false)
 
   const user = JSON.parse(localStorage.getItem('user') || '{}')
 
@@ -16,13 +17,16 @@ function MyPage() {
 
   const fetchSummary = async () => {
     try {
+      setSummaryError(false)
       const res = await apiFetch('/users/me/summary')
       if (res.ok) {
         const data = await res.json()
         setBorrowedCount(data.active_loans ?? 0)
         setMaxBorrow(data.max_borrow ?? 5)
+      } else {
+        setSummaryError(true)
       }
-    } catch { /* */ }
+    } catch { setSummaryError(true) }
   }
 
   const handleLogout = async () => {
@@ -86,7 +90,10 @@ function MyPage() {
         <div className="mypage-status-section">
           <div className="mypage-status-header">
             <span className="mypage-status-title">대출 현황</span>
-            <span className="mypage-status-detail" onClick={() => navigate('/my-library?tab=loans')}>더보기 &gt;</span>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {summaryError && <button className="refresh-btn" onClick={fetchSummary}>↺ 새로고침</button>}
+              <span className="mypage-status-detail" onClick={() => navigate('/my-library?tab=loans')}>더보기 &gt;</span>
+            </div>
           </div>
           <div className="mypage-status-card">
             <div className="mypage-borrow-row">

@@ -11,6 +11,7 @@ interface Notification {
   bookMeta: string
   date: string
   bookId: string
+  coverImageUrl?: string
 }
 
 const DISMISSED_KEY = 'dismissed_notifications'
@@ -18,6 +19,7 @@ const DISMISSED_KEY = 'dismissed_notifications'
 function Notifications() {
   const navigate = useNavigate()
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const [fetchError, setFetchError] = useState(false)
 
   useEffect(() => { fetchNotifications() }, [])
 
@@ -28,6 +30,7 @@ function Notifications() {
   const fetchNotifications = async () => {
     const notifs: Notification[] = []
     const dismissed = getDismissed()
+    setFetchError(false)
 
     try {
       // 예약 중 도서 알림 (PENDING)
@@ -45,6 +48,7 @@ function Notifications() {
             bookMeta: `${r.book.author || ''} / ${r.book.publisher || ''} / ${r.book.shelf_location || ''}`,
             date: r.reserved_at?.split('T')[0]?.replace(/-/g, '.') || '',
             bookId: r.book.id,
+            coverImageUrl: r.book.cover_image_url,
           })
         }
       }
@@ -66,10 +70,11 @@ function Notifications() {
             bookMeta: `${l.book.author || ''} / ${l.book.publisher || ''} / ${l.book.shelf_location || ''}`,
             date: l.due_date?.split('T')[0]?.replace(/-/g, '.') || '',
             bookId: l.book.id,
+            coverImageUrl: l.book.cover_image_url,
           })
         }
       }
-    } catch { /* */ }
+    } catch { setFetchError(true) }
     setNotifications(notifs)
   }
 
@@ -106,9 +111,12 @@ function Notifications() {
       <div className="noti-content">
         <div className="noti-header">
           <h1 className="noti-title">알림</h1>
-          {notifications.length > 0 && (
-            <button className="noti-clear-btn" onClick={handleClearAll}>전체 지우기</button>
-          )}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {fetchError && <button className="refresh-btn" onClick={fetchNotifications}>↺ 새로고침</button>}
+            {notifications.length > 0 && (
+              <button className="noti-clear-btn" onClick={handleClearAll}>전체 지우기</button>
+            )}
+          </div>
         </div>
 
         {notifications.length === 0 ? (
@@ -133,7 +141,12 @@ function Notifications() {
                 </div>
                 <div className="noti-item-date">{noti.date}</div>
                 <div className="noti-book-card" onClick={() => { handleDelete(noti.id); if (noti.type === 'reserve') { navigate('/my-library?tab=storage') } else { navigate(`/book/${noti.bookId}`) } }}>
-                  <div className="noti-book-cover"></div>
+                  <div className="noti-book-cover">
+                    {noti.coverImageUrl
+                      ? <img src={noti.coverImageUrl} alt={noti.bookTitle} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /><path d="M8 7h6" /><path d="M8 11h4" /></svg>
+                    }
+                  </div>
                   <div className="noti-book-info">
                     <div className="noti-book-title">{noti.bookTitle}</div>
                     <div className="noti-book-meta">{noti.bookMeta}</div>

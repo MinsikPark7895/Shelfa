@@ -1,3 +1,4 @@
+import React from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Home from './pages/Home'
 import Login from './pages/Login'
@@ -11,7 +12,7 @@ import BookDetail from './pages/BookDetail'
 import AdminPage from './pages/AdminPage'
 import './App.css'
 
-function PrivateRoute({ children }: { children: JSX.Element }) {
+function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('access_token')
   if (!token) {
     window.location.href = '/login'

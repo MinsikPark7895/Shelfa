@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, useNavigationType } from 'react-router-dom'
 import '../styles/Search.css'
+import '../styles/AdminPage.css'
 import ReservationModal from './ReservationModal'
 import { apiFetch } from '../api'
 
@@ -18,6 +19,7 @@ const PLACEHOLDER_MAP: Record<string, string> = {
 function Search() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const navigationType = useNavigationType()
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [searchValue, setSearchValue] = useState('')
   const [isSearching, setIsSearching] = useState(false)
@@ -30,18 +32,28 @@ function Search() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [favoriteBookIds, setFavoriteBookIds] = useState<Set<string>>(new Set())
   const [selectedBook, setSelectedBook] = useState<BookResult | null>(null)
+  const myLoanIds = useRef<Set<string>>(new Set())
+  const myResIds = useRef<Set<string>>(new Set())
+  const [gearOpenId, setGearOpenId] = useState<string | null>(null)
+  const [showDevNotice, setShowDevNotice] = useState(false)
+  const isAdmin = JSON.parse(localStorage.getItem('user') || '{}').role === 'admin'
 
   useEffect(() => {
     fetchFavorites()
-    // 검색 상태 복원
-    const savedValue = sessionStorage.getItem('search_value')
-    const savedCategory = sessionStorage.getItem('search_category') || '전체'
-    if (savedValue && !searchParams.get('q')) {
-      setSearchValue(savedValue)
-      setSearchCategory(savedCategory)
-      setLastSearchCategory(savedCategory)
-      setIsSearching(true)
-      fetchBooksWithCategory(savedValue, savedCategory)
+    // 뒤로가기일 때만 검색 상태 복원
+    if (navigationType === 'POP') {
+      const savedValue = sessionStorage.getItem('search_value')
+      const savedCategory = sessionStorage.getItem('search_category') || '전체'
+      if (savedValue && !searchParams.get('q')) {
+        setSearchValue(savedValue)
+        setSearchCategory(savedCategory)
+        setLastSearchCategory(savedCategory)
+        setIsSearching(true)
+        fetchBooks(savedValue)
+      }
+    } else {
+      sessionStorage.removeItem('search_value')
+      sessionStorage.removeItem('search_category')
     }
     let saved: string | null = null
     try {
@@ -72,34 +84,24 @@ function Search() {
 
   const fetchFavorites = async () => {
     try {
-      const res = await apiFetch('/favorites/me?limit=100')
-      if (res.ok) {
-        const data = await res.json()
+      const [favRes, loanRes, resRes] = await Promise.all([
+        apiFetch('/favorites/me?limit=100'),
+        apiFetch('/loans/me?limit=50'),
+        apiFetch('/reservations/me?limit=50'),
+      ])
+      if (favRes.ok) {
+        const data = await favRes.json()
         setFavoriteBookIds(new Set(data.items?.map((f: any) => f.book.id) || []))
       }
+      if (loanRes.ok) {
+        const data = await loanRes.json()
+        myLoanIds.current = new Set(data.items?.map((l: any) => l.book.id) || [])
+      }
+      if (resRes.ok) {
+        const data = await resRes.json()
+        myResIds.current = new Set(data.items?.filter((r: any) => r.status === 'PENDING').map((r: any) => r.book.id) || [])
+      }
     } catch { /* */ }
-  }
-
-  const fetchBooksWithCategory = async (keyword: string, category: string) => {
-    sessionStorage.setItem('search_value', keyword)
-    sessionStorage.setItem('search_category', category)
-    try {
-      const res = await apiFetch(`/books/search?query=${encodeURIComponent(keyword)}&limit=50`)
-      if (!res.ok) { setSearchResults([]); return }
-      const data = await res.json()
-      const [loanRes, resRes] = await Promise.all([apiFetch('/loans/me?limit=50'), apiFetch('/reservations/me?limit=50')])
-      const loanData = loanRes.ok ? await loanRes.json() : { items: [] }
-      const resData = resRes.ok ? await resRes.json() : { items: [] }
-      const myLoanIds = new Set(loanData.items?.map((l: any) => l.book.id) || [])
-      const myResIds = new Set(resData.items?.filter((r: any) => r.status === 'PENDING').map((r: any) => r.book.id) || [])
-      const items = (data.items || []).map((book: any) => {
-        let displayStatus = book.status === 'AVAILABLE' ? 'available' : 'borrowed'
-        if (myLoanIds.has(book.id)) displayStatus = 'my_loan'
-        else if (myResIds.has(book.id)) displayStatus = 'my_reservation'
-        return { ...book, displayStatus }
-      })
-      setSearchResults(items)
-    } catch { setSearchResults([]) }
   }
 
   const fetchBooks = async (keyword: string) => {
@@ -109,25 +111,14 @@ function Search() {
       const res = await apiFetch(`/books/search?query=${encodeURIComponent(keyword)}&limit=50`)
       if (!res.ok) { setSearchResults([]); return }
       const data = await res.json()
-
-      // 내 대출/예약 상태 조회
-      const [loanRes, resRes] = await Promise.all([
-        apiFetch('/loans/me?limit=50'),
-        apiFetch('/reservations/me?limit=50'),
-      ])
-      const loanData = loanRes.ok ? await loanRes.json() : { items: [] }
-      const resData = resRes.ok ? await resRes.json() : { items: [] }
-      const myLoanIds = new Set(loanData.items?.map((l: any) => l.book.id) || [])
-      const myResIds = new Set(resData.items?.filter((r: any) => r.status === 'pending').map((r: any) => r.book.id) || [])
-
       const items = (data.items || []).map((book: any) => {
         let displayStatus = book.status === 'AVAILABLE' ? 'available' : 'borrowed'
-        if (myLoanIds.has(book.id)) displayStatus = 'my_loan'
-        else if (myResIds.has(book.id)) displayStatus = 'my_reservation'
+        if (myLoanIds.current.has(book.id)) displayStatus = 'my_loan'
+        else if (myResIds.current.has(book.id)) displayStatus = 'my_reservation'
         return { ...book, displayStatus }
       })
       setSearchResults(items)
-    } catch { setSearchResults([]) }
+    } catch { alert('검색 중 오류가 발생했습니다.'); setSearchResults([]) }
   }
 
   const saveSearches = (searches: RecentSearch[]) => { setRecentSearches(searches); localStorage.setItem(getStorageKey(), JSON.stringify(searches)) }
@@ -158,7 +149,7 @@ function Search() {
         await apiFetch(`/favorites/${bookId}`, { method: 'POST' })
         setFavoriteBookIds(prev => new Set(prev).add(bookId))
       }
-    } catch { /* */ } finally { setIsProcessing(false) }
+    } catch { alert('오류가 발생했습니다.') } finally { setIsProcessing(false) }
   }
 
   const getCategoryLabel = (cat: string) => {
@@ -208,28 +199,48 @@ function Search() {
             </div>
             {searchResults.length === 0 ? <div className="search-result-empty">검색 결과가 없습니다.</div> : (
               <div className="search-result-list">{searchResults.map(book => (
-                <div className="search-result-card" key={book.id} onClick={() => navigate(`/book/${book.id}`)}>
-                  <div className="search-result-cover">
-                    {book.cover_image_url ? <img src={book.cover_image_url} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div className="search-result-cover-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /><path d="M8 7h6" /><path d="M8 11h4" /></svg></div>}
-                  </div>
-                  <div className="search-result-info">
-                    <div className="search-result-title-row">
-                      <div className="search-result-title">{book.title}</div>
-                      <button className="search-result-fav-btn" onClick={(e) => handleToggleFavorite(book.id, e)}>
-                        <svg viewBox="0 0 24 24" fill={favoriteBookIds.has(book.id) ? '#E03131' : 'none'} stroke={favoriteBookIds.has(book.id) ? '#E03131' : 'var(--gray-400)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                        </svg>
-                      </button>
+                <div className="search-result-card" key={book.id}>
+                  <div className="search-result-card-body" onClick={() => navigate(`/book/${book.id}`)}>
+                    <div className="search-result-cover">
+                      {book.cover_image_url ? <img src={book.cover_image_url} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div className="search-result-cover-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /><path d="M8 7h6" /><path d="M8 11h4" /></svg></div>}
                     </div>
-                    <div className="search-result-meta">{book.shelf_location}</div>
-                    <div className="search-result-meta">{book.author} 지음</div>
-                    <div className="search-result-meta">{book.publisher}</div>
-                    <div className="search-result-bottom">
-                      {book.displayStatus === 'available' && (<><span className="badge-available">대출가능</span><button className="search-result-reserve-btn" onClick={(e) => { e.stopPropagation(); setSelectedBook(book) }}>예약하기</button></>)}
-                      {(book.displayStatus === 'borrowed' || book.displayStatus === 'my_loan') && (<><span className="badge-unavailable">대출불가</span><button className="search-result-reserve-btn disabled" disabled onClick={(e) => e.stopPropagation()}>예약불가</button></>)}
-                      {book.displayStatus === 'my_reservation' && (<><span className="badge-myreserve">예약완료</span><button className="search-result-reserve-btn disabled" disabled onClick={(e) => e.stopPropagation()}>예약완료</button></>)}
+                    <div className="search-result-info">
+                      <div className="search-result-title-row">
+                        <div className="search-result-title">{book.title}</div>
+                        <button className="search-result-fav-btn" onClick={(e) => handleToggleFavorite(book.id, e)}>
+                          <svg viewBox="0 0 24 24" fill={favoriteBookIds.has(book.id) ? '#E03131' : 'none'} stroke={favoriteBookIds.has(book.id) ? '#E03131' : 'var(--gray-400)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="search-result-meta">{book.shelf_location}</div>
+                      <div className="search-result-meta">{book.author} 지음</div>
+                      <div className="search-result-meta">{book.publisher}</div>
+                      <div className="search-result-bottom">
+                        {book.displayStatus === 'available' && (<><span className="badge-available">대출가능</span><button className="search-result-reserve-btn" onClick={(e) => { e.stopPropagation(); setSelectedBook(book) }}>예약하기</button></>)}
+                        {(book.displayStatus === 'borrowed' || book.displayStatus === 'my_loan') && (<><span className="badge-unavailable">대출불가</span><button className="search-result-reserve-btn disabled" disabled onClick={(e) => e.stopPropagation()}>예약불가</button></>)}
+                        {book.displayStatus === 'my_reservation' && (<><span className="badge-myreserve">예약완료</span><button className="search-result-reserve-btn disabled" disabled onClick={(e) => e.stopPropagation()}>예약완료</button></>)}
+                      </div>
                     </div>
                   </div>
+                  {isAdmin && (
+                    <div className="search-result-card-btns">
+                      <div className="admin-gear-wrap">
+                        <button className="admin-gear-btn" onClick={() => setGearOpenId(gearOpenId === book.id ? null : book.id)}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="3" />
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                          </svg>
+                        </button>
+                        {gearOpenId === book.id && (
+                          <div className="admin-gear-dropdown" style={{ bottom: '24px', top: 'auto' }}>
+                            <button className="admin-gear-item" onClick={() => { setGearOpenId(null); setShowDevNotice(true) }}>도서 정보 수정</button>
+                            <button className="admin-gear-item admin-gear-item--danger" onClick={() => { setGearOpenId(null); setShowDevNotice(true) }}>도서 삭제</button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}</div>
             )}
@@ -251,6 +262,21 @@ function Search() {
           </div>
         )}
       </div>
+
+      {showDevNotice && (
+        <div className="modal-overlay" onClick={() => setShowDevNotice(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close-btn" onClick={() => setShowDevNotice(false)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            </button>
+            <div className="modal-result">
+              <div className="modal-result-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#aaa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg></div>
+              <p className="modal-result-text">추후 개발 예정입니다.</p>
+              <button className="modal-btn-outline" onClick={() => setShowDevNotice(false)}>확인</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedBook && (
         <ReservationModal

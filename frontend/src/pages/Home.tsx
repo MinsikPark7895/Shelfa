@@ -35,6 +35,8 @@ function Home() {
   const [reservationCount, setReservationCount] = useState(0)
   const [wishBooks, setWishBooks] = useState<BookData[]>([])
   const [selectedBook, setSelectedBook] = useState<BookData | null>(null)
+  const [summaryError, setSummaryError] = useState(false)
+  const [wishlistError, setWishlistError] = useState(false)
 
   useEffect(() => {
     const timer = setInterval(() => { setCurrentSlide(prev => (prev + 1) % 2) }, 5000)
@@ -48,6 +50,7 @@ function Home() {
 
   const fetchLibrarySummary = async () => {
     try {
+      setSummaryError(false)
       const res = await apiFetch('/users/me/summary')
       if (res.ok) {
         const data = await res.json()
@@ -59,18 +62,21 @@ function Home() {
           setNearestDday(`D-${Math.max(0, diffDays)}`)
           setNearestDueDate(`${d.getMonth() + 1}/${d.getDate()}`)
         }
+      } else {
+        setSummaryError(true)
       }
-    } catch { /* */ }
+    } catch { setSummaryError(true) }
   }
 
   const fetchWishlist = async () => {
     try {
+      setWishlistError(false)
       const [favRes, loanRes, resRes] = await Promise.all([
         apiFetch('/favorites/me?limit=5'),
         apiFetch('/loans/me?limit=50'),
         apiFetch('/reservations/me?limit=50'),
       ])
-      if (!favRes.ok) return
+      if (!favRes.ok) { setWishlistError(true); return }
       const favData = await favRes.json()
       const loanData = loanRes.ok ? await loanRes.json() : { items: [] }
       const resData = resRes.ok ? await resRes.json() : { items: [] }
@@ -86,7 +92,7 @@ function Home() {
         return { ...f.book, isAvailable: displayStatus === 'available', displayStatus }
       })
       setWishBooks(books)
-    } catch { /* */ }
+    } catch { setWishlistError(true) }
   }
 
   const handleSearchSubmit = () => {
@@ -170,7 +176,10 @@ function Home() {
         <div className="home-section">
           <div className="home-section-header">
             <span className="home-section-title">내 서재</span>
-            <a className="home-section-more" onClick={() => navigate('/my-library')}>더보기</a>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {summaryError && <button className="refresh-btn" onClick={fetchLibrarySummary}>↺ 새로고침</button>}
+              <a className="home-section-more" onClick={() => navigate('/my-library')}>더보기</a>
+            </div>
           </div>
           <div className="library-card">
             <div className="library-card-label">대출 중인 도서</div>
@@ -199,7 +208,10 @@ function Home() {
         <div className="home-section">
           <div className="home-section-header">
             <span className="home-section-title">위시리스트</span>
-            <a className="home-section-more" onClick={() => navigate('/my-library?tab=favorites')}>더보기</a>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {wishlistError && <button className="refresh-btn" onClick={fetchWishlist}>↺ 새로고침</button>}
+              <a className="home-section-more" onClick={() => navigate('/my-library?tab=favorites')}>더보기</a>
+            </div>
           </div>
           {wishBooks.length === 0 ? (
             <div className="wish-empty">즐겨찾기한 도서가 없습니다.</div>
