@@ -1,0 +1,455 @@
+.mylibrary-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 20px 90px;
+}
+
+.mylibrary-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+/* 탭 그룹 */
+.tab-group {
+  display: flex;
+  gap: 0;
+  margin-bottom: 20px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1.5px solid var(--navy);
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: 'Noto Sans KR', sans-serif;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--white);
+  color: var(--navy);
+}
+
+.tab-btn.active {
+  background: var(--navy);
+  color: var(--white);
+}
+
+.tab-btn:not(:last-child) {
+  border-right: 1.5px solid var(--navy);
+}
+
+/* 탭 콘텐츠 */
+.tab-content {
+  min-height: 300px;
+}
+
+.tab-content-empty {
+  text-align: center;
+  padding: 60px 0;
+  color: var(--gray-400);
+  font-size: 14px;
+}
+
+/* 안내 배너 */
+.info-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--navy);
+  border-radius: 12px;
+  margin-bottom: 16px;
+  color: var(--white);
+}
+
+.info-banner-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.info-banner-icon svg {
+  width: 32px;
+  height: 32px;
+  color: var(--white);
+}
+
+.info-banner-text {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* 섹션 헤더 */
+.section-count {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.section-count-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.section-count-number {
+  font-size: 13px;
+  color: var(--gray-500);
+}
+
+/* ===== 책 카드 ===== */
+.book-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.book-card {
+  display: flex;
+  gap: 14px;
+  padding: 14px;
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+}
+
+.book-card-cover {
+  width: 80px;
+  height: 110px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--gray-100);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.book-card-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.book-card-cover svg {
+  width: 32px;
+  height: 32px;
+  color: var(--gray-300);
+}
+
+.book-card-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.book-card-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.book-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.book-card-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.book-card-fav-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.book-card-fav-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.book-card-return-btn {
+  padding: 4px 10px;
+  background: var(--gray-100);
+  border: 1px solid var(--gray-300);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Noto Sans KR', sans-serif;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.book-card-return-btn:active {
+  background: var(--gray-200);
+}
+
+.book-card-meta {
+  font-size: 12px;
+  color: var(--gray-500);
+}
+
+.book-card-due-row {
+  display: flex;
+  justify-content: space-between; /* 양 끝으로 밀어내기 */
+  align-items: center;            /* 수직 중앙 정렬 */
+  width: 100%;
+}
+
+.book-card-due {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.book-card-due.overdue {
+  color: #E03131;
+  font-weight: 700;
+}
+
+.book-card-due.warning {
+  color: #E67700;
+}
+
+.book-card-bottom-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.book-card-extend-btn {
+  padding: 5px 14px;
+  background: var(--white);
+  border: 1px solid var(--gray-300);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Noto Sans KR', sans-serif;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.book-card-extend-btn:active {
+  background: var(--gray-100);
+}
+
+.book-card-reserve-btn {
+  padding: 5px 14px;
+  background: var(--navy);
+  color: var(--white);
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Noto Sans KR', sans-serif;
+  cursor: pointer;
+}
+
+.book-card-reserve-btn:active {
+  opacity: 0.85;
+}
+
+.book-card-reserve-btn.disabled {
+  background: var(--gray-300);
+  color: var(--gray-500);
+  cursor: not-allowed;
+}
+
+/* 보관도서 */
+.book-card-storage-badge {
+  margin-top: 4px;
+}
+
+.badge-storage {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #EBFBEE;
+  color: #2F9E44;
+}
+
+.book-card-storage-info {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.book-card-storage-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.book-card-storage-row svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.book-card-storage-row.deadline {
+  color: #E03131;
+  font-weight: 600;
+}
+
+.book-card-locker-btn {
+  padding: 8px 0;
+  background: var(--white);
+  color: var(--text-primary);
+  border: 1.5px solid var(--gray-400);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Noto Sans KR', sans-serif;
+  cursor: pointer;
+  width: 100%;
+  text-align: center;
+  align-self: center;
+}
+
+.book-card-locker-btn:active {
+  opacity: 0.85;
+}
+
+/* 뱃지 */
+.badge-available {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #EBFBEE;
+  color: #2F9E44;
+}
+
+.badge-unavailable {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #FFF5F5;
+  color: #E03131;
+}
+
+.badge-myreserve {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #FFF9DB;
+  color: #E67700;
+}
+
+.book-card-storage-box {
+  margin-top: 8px;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #F8F9FA;
+  width: 40%;
+}
+
+.book-card-storage-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.book-card-storage-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.book-card-storage-label-row svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.book-card-storage-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding-left: 20px;
+}
+
+.book-card-storage-deadline {
+  font-size: 14px;
+  font-weight: 700;
+  color: #E03131;
+  padding-left: 20px;
+}
+
+.book-card-locker-btn {
+  padding: 8px 0;
+  background: var(--white);
+  color: var(--text-primary);
+  border: 1.5px solid var(--gray-400);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Noto Sans KR', sans-serif;
+  cursor: pointer;
+  width: 100%;
+  text-align: center;
+  align-self: center;
+}
+
+.book-card-locker-btn:active {
+  opacity: 0.85;
+}
+
+.book-card-storage-deadline-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 20px;
+}
+
+.book-card-cancel-btn {
+  padding: 3px 8px;
+  background: none;
+  color: var(--gray-500);
+  border: 1px solid var(--gray-300);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Noto Sans KR', sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.book-card-cancel-btn:active {
+  opacity: 0.7;
+}

@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  ros2:
+    build:
+      context: ./ros2_ws
+      dockerfile: Dockerfile
+    container_name: ros2_core
+    privileged: true # 카메라 등 하드웨어 장치 접근을 위해 필수
+    network_mode: host # ROS 2 DDS 통신을 위해 호스트 네트워크 사용 권장
+    volumes:
+      - /dev:/dev # 로봇 시리얼 연결, 웹캠 등 USB 장치 마운트
+      - ./ros2_ws/src:/ros2_ws/src # 로컬 코드 변경을 컨테이너에 즉시 반영
+    stdin_open: true
+    tty: true
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: shelfa_frontend
+    ports:
+      - "127.0.0.1:8081:80"
+
+  nginx:
+    image: nginx:alpine
+    container_name: shelfa_nginx
+    network_mode: host # 백엔드가 host 모드이므로 같이 host 모드 사용 (포트 80 자동 할당)
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - backend
+      - frontend
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: shelfa_backend
+    network_mode: host # ROS 2 컨테이터(로봇/비전)와 통신하기 위해 동일 네트워크 사용
+    depends_on:
+      - postgres
+      - chromadb
+      - mqtt
+      - redis
+    volumes:
+      - ./backend:/app # 로컬 코드 변경을 컨테이너에 즉시 반영
+    env_file:
+      - .env
+    # 백엔드 파이썬 서버 코드가 작성되면 아래 주석을 해체하고 알맞게 수정하세요.
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    stdin_open: true
+    tty: true    
+
+  postgres:
+    image: postgres:15
+    container_name: shelfa_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: shelfa_chromadb
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8000" # FastAPI(8000)와 충돌하지 않도록 호스트의 8080으로 포워딩
+    volumes:
+      - chromadb_data:/chroma/chroma
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: shelfa_mqtt
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1883:1883"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
+  redis:
+    image: redis:alpine
+    container_name: shelfa_redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+
+  certbot:
+    image: certbot/certbot
+    container_name: shelfa_certbot
+    restart: unless-stopped
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    # 매 12시간마다 인증서 만료일을 확인하여 자동으로 갱신(renew)하는 명령 실행
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  postgres_data:
+  chromadb_data:
+  mosquitto_data:
+  mosquitto_log:
+  redis_data:
