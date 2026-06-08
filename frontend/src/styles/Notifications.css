@@ -155,3 +155,11 @@
   color: var(--gray-500);
   line-height: 1.4;
 }
+.refresh-btn {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: #888;
+  cursor: pointer;
+  padding: 2px 4px;
+}
