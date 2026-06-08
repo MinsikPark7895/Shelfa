@@ -21,7 +21,10 @@ function MyLibrary() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [selectedBook, setSelectedBook] = useState<BookData | null>(null)
 
-  useEffect(() => { fetchLoans(); fetchFavorites(); fetchStorage() }, [activeTab])
+  useEffect(() => { fetchLoans() }, [])
+  useEffect(() => { if (activeTab === 'loans') fetchLoans() }, [activeTab])
+  useEffect(() => { if (activeTab === 'favorites') fetchFavorites() }, [activeTab])
+  useEffect(() => { if (activeTab === 'storage') fetchStorage() }, [activeTab])
 
   const fetchLoans = async () => {
     try {
@@ -36,7 +39,7 @@ function MyLibrary() {
         const favData = await favRes.json()
         setFavBookIds(new Set(favData.items?.map((f: any) => f.book.id) || []))
       }
-    } catch { /* */ }
+    } catch { alert('데이터를 불러오는 중 오류가 발생했습니다.') }
   }
 
   const fetchFavorites = async () => {
@@ -62,7 +65,7 @@ function MyLibrary() {
       })
       setFavoriteItems(items)
       setFavBookIds(new Set(favData.items?.map((f: any) => f.book.id) || []))
-    } catch { /* */ }
+    } catch { alert('데이터를 불러오는 중 오류가 발생했습니다.') }
   }
 
   const fetchStorage = async () => {
@@ -72,7 +75,7 @@ function MyLibrary() {
         const data = await res.json()
         setStorageItems(data.items?.filter((r: any) => r.status === 'PENDING') || [])
       }
-    } catch { /* */ }
+    } catch { alert('데이터를 불러오는 중 오류가 발생했습니다.') }
   }
 
   const handleToggleFavorite = async (bookId: string, e: React.MouseEvent) => {
@@ -87,7 +90,7 @@ function MyLibrary() {
         await apiFetch(`/favorites/${bookId}`, { method: 'POST' })
         setFavBookIds(prev => new Set(prev).add(bookId))
       }
-    } catch { /* */ } finally { setIsProcessing(false) }
+    } catch { alert('오류가 발생했습니다.') } finally { setIsProcessing(false) }
   }
 
   const handleReturn = async (loanId: string) => {

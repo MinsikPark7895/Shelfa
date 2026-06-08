@@ -5,7 +5,6 @@ import { apiFetch, publicFetch } from '../api'
 
 function MyPage() {
   const navigate = useNavigate()
-  const [showModal, setShowModal] = useState(false)
   const [borrowedCount, setBorrowedCount] = useState(0)
   const [maxBorrow, setMaxBorrow] = useState(5)
 
@@ -106,14 +105,6 @@ function MyPage() {
         <button className="mypage-logout-btn" onClick={handleLogout}>로그아웃</button>
       </div>
 
-      {showModal && (
-        <div className="mypage-modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="mypage-modal" onClick={(e) => e.stopPropagation()}>
-            <p className="mypage-modal-text">현재 지원하지 않는 기능입니다.</p>
-            <button className="mypage-modal-btn" onClick={() => setShowModal(false)}>확인</button>
-          </div>
-        </div>
-      )}
 
       <div className="tab-bar">
         <a className="tab-item" onClick={() => navigate('/home')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg><span className="tab-label">홈</span></a>
