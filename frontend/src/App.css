@@ -34,9 +34,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
   padding: 16px 20px;
   background-color: #F7F9FB;
+  position: relative;
+}
+
+.top-nav .admin-nav-btn,
+.top-nav .admin-nav-icon {
+  position: absolute;
+  right: 20px;
 }
 
 .top-nav svg {
@@ -264,4 +271,18 @@
   color: var(--gray-400);
   flex-shrink: 0;
   cursor: pointer;
+}
+/* ===== 가로 모드 대응 ===== */
+@media (orientation: landscape) {
+  .page-container {
+    max-width: 100%;
+  }
+
+  .tab-bar {
+    max-width: 100%;
+  }
+
+  .top-nav {
+    max-width: 100%;
+  }
 }
