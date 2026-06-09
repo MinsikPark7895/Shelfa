@@ -21,7 +21,6 @@ function MyLibrary() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [selectedBook, setSelectedBook] = useState<BookData | null>(null)
 
-  useEffect(() => { fetchLoans() }, [])
   useEffect(() => { if (activeTab === 'loans') fetchLoans() }, [activeTab])
   useEffect(() => { if (activeTab === 'favorites') fetchFavorites() }, [activeTab])
   useEffect(() => { if (activeTab === 'storage') fetchStorage() }, [activeTab])
@@ -98,7 +97,7 @@ function MyLibrary() {
     setIsProcessing(true)
     try {
       await apiFetch(`/loans/${loanId}/return`, { method: 'POST' })
-      fetchLoans()
+      await fetchLoans()
     } catch { alert('오류가 발생했습니다.') } finally { setIsProcessing(false) }
   }
 
@@ -108,7 +107,7 @@ function MyLibrary() {
     setIsProcessing(true)
     try {
       await apiFetch(`/reservations/${reservationId}/cancel`, { method: 'POST' })
-      fetchStorage()
+      await fetchStorage()
     } catch { alert('오류가 발생했습니다.') } finally { setIsProcessing(false) }
   }
 
@@ -127,7 +126,7 @@ function MyLibrary() {
       <div className="top-nav">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /><path d="M8 7h6" /><path d="M8 11h4" /></svg>
         <span className="logo-text">XYZ 도서관</span>
-        {JSON.parse(localStorage.getItem('user') || '{}').role === 'admin' && (
+        {(() => { try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} } })().role === 'admin' && (
           <button className="admin-nav-btn" onClick={() => navigate('/admin')}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />

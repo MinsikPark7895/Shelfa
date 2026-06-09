@@ -21,7 +21,7 @@ function BookDetail() {
   const [loadError, setLoadError] = useState(false)
   const [showGearMenu, setShowGearMenu] = useState(false)
   const [showDevNotice, setShowDevNotice] = useState(false)
-  const isAdmin = JSON.parse(localStorage.getItem('user') || '{}').role === 'admin'
+  const isAdmin = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} } })().role === 'admin'
 
   useEffect(() => { fetchBook() }, [id])
 

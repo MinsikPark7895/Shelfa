@@ -20,6 +20,7 @@ function Notifications() {
   const navigate = useNavigate()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [fetchError, setFetchError] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => { fetchNotifications() }, [])
 
@@ -74,8 +75,9 @@ function Notifications() {
           })
         }
       }
+      setNotifications(notifs)
     } catch { setFetchError(true) }
-    setNotifications(notifs)
+    finally { setIsLoading(false) }
   }
 
   const handleDelete = (id: string) => {
@@ -99,7 +101,7 @@ function Notifications() {
           <path d="M8 7h6" /><path d="M8 11h4" />
         </svg>
         <span className="logo-text">XYZ 도서관</span>
-        {JSON.parse(localStorage.getItem('user') || '{}').role === 'admin' && (
+        {(() => { try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} } })().role === 'admin' && (
           <button className="admin-nav-btn" onClick={() => navigate('/admin')}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
@@ -120,7 +122,7 @@ function Notifications() {
         </div>
 
         {notifications.length === 0 ? (
-          <div className="noti-empty">알림이 없습니다.</div>
+          isLoading ? <div className="noti-empty">로딩 중...</div> : <div className="noti-empty">알림이 없습니다.</div>
         ) : (
           <div className="noti-list">
             {notifications.map(noti => (
