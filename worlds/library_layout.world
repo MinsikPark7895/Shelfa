@@ -292,5 +292,36 @@
       </link>
     </model>
 
+    <!-- ============================================================
+         Anti-Tunneling Barriers for Bookshelves
+         책장의 얇은 판(2cm)을 로봇이 고속으로 통과(Tunneling)하는 현상 방지
+         책장 위치에 두꺼운 투명 충돌 박스를 씌워서 물리적으로 절대 통과 못하게 함
+         ============================================================ -->
+    <model name="anti_tunneling_bookshelves">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+
+      <link name="shelf_left_a_block">
+        <pose>-0.5 1.5 0.5 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.5 1.0 1.0</size></box></geometry></collision>
+      </link>
+      <link name="shelf_left_b_block">
+        <pose>0.5 1.5 0.5 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.5 1.0 1.0</size></box></geometry></collision>
+      </link>
+      <link name="shelf_center_a_block">
+        <pose>4.0 1.5 0.5 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.5 1.0 1.0</size></box></geometry></collision>
+      </link>
+      <link name="shelf_center_b_block">
+        <pose>5.0 1.5 0.5 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.5 1.0 1.0</size></box></geometry></collision>
+      </link>
+      <link name="shelf_right_block">
+        <pose>9.0 1.5 0.5 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.5 1.0 1.0</size></box></geometry></collision>
+      </link>
+    </model>
+
   </world>
 </sdf>
