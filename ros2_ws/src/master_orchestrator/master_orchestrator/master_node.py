@@ -1,4 +1,9 @@
+import os
+from dotenv import load_dotenv
 import json
+
+# 현재 경로 또는 상위 경로에서 .env 파일을 찾아 환경변수로 로드합니다.
+load_dotenv(os.path.join(os.path.expanduser("~"), "Desktop", "Shelfa", ".env"))
 import asyncio
 import threading
 import rclpy
@@ -34,7 +39,8 @@ class MasterOrchestratorNode(Node):
         self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
 
         # 2. MQTT 설정
-        self.mqtt_broker = "127.0.0.1" # 도커 호스트 네트워크
+        # 환경 변수 SHELFA_MQTT_BROKER가 있으면 그 값을 사용하고, 없으면 로컬(127.0.0.1) 사용
+        self.mqtt_broker = os.environ.get("SHELFA_MQTT_BROKER", "127.0.0.1")
         self.mqtt_port = 1883
         self.topic_command = "shelfa/robot/command"
         self.topic_status = "shelfa/robot/status"
