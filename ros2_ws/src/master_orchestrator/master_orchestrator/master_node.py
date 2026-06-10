@@ -174,12 +174,29 @@ class MasterOrchestratorNode(Node):
         self.get_logger().info(f"🚗 [Phase 1] {location_name} 책장 앞에 무사히 도착했습니다.")
         
         # ======================================================
-        # [Phase 2] 팀원 코드: 비전 & 로봇팔 제어 (현재는 대기 시뮬레이션)
+        # [Phase 2] 팀원 코드: 비전 & 로봇팔 파이프라인 쉘 스크립트 실행
         # ======================================================
-        self.get_logger().info(f"🦾 [Phase 2] 동료의 비전 및 E0509 로봇팔 제어 시작 대기...")
-        # TODO: 추후 여기에 팀원의 ROS 2 서비스/액션 호출 코드가 들어갑니다.
-        await asyncio.sleep(5.0) 
-        self.get_logger().info(f"🦾 [Phase 2] (가상) 비전 인식 및 로봇팔 픽업 완료!")
+        book_title = book_info.get("title", "제3인류")
+        self.get_logger().info(f"🦾 [Phase 2] 로봇팔 파지 파이프라인 쉘 스크립트 실행 (목표: {book_title})...")
+        
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "/bin/bash", "/home/minsik/Desktop/Shelfa/run_pickup.sh", book_title,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode == 0:
+                self.get_logger().info(f"🦾 [Phase 2] 로봇팔 픽업 완벽 성공!\n{stdout.decode()}")
+            else:
+                self.get_logger().error(f"❌ [Phase 2] 파지 스크립트 에러 발생:\n{stderr.decode()}")
+                return
+                
+        except Exception as e:
+            self.get_logger().error(f"❌ [Phase 2] 파이프라인 실행 실패: {e}")
+            return
         
         # ======================================================
         # [Phase 3] 책장 구역 -> 다시 대기 위치(HOME)로 복귀
