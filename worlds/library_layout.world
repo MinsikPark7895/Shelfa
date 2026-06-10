@@ -1,0 +1,327 @@
+<?xml version="1.0" ?>
+<sdf version="1.7">
+  <world name="shelfa_library_world">
+
+    <!-- Lighting -->
+    <include>
+      <uri>model://sun</uri>
+    </include>
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+
+    <!-- ============================================================
+         Library Outer Walls (building_editor_models/Library2)
+         Center at (0, 0). Static is set in the model itself.
+         ============================================================ -->
+    <include>
+      <name>library_building</name>
+      <uri>model://Library2</uri>
+      <pose>0 0 0 0 0 0</pose>
+    </include>
+
+    <!-- ============================================================
+         Bookshelf_with_Book10
+         도면 기준:
+           - 좌측 그룹 (Bookshelf_with_Book10 라벨 왼쪽):
+               세로로 긴 책장, x=-3 ~ -2 부근, y=2 ~ 4 구간
+           - 중앙 그룹 상단 (Bookshelf_with_Book10 라벨 중앙 상단):
+               x=1 부근, y=3 ~ 5 구간
+           - 중앙 그룹 하단 + 우측 (Bookshelf_with_Book10 라벨 오른쪽):
+               x=5 부근, y=2 ~ 4 구간
+
+         Bookshelf_with_Book10은 기본 방향이 X축 방향으로 길기 때문에
+         yaw=1.5708 (90도)를 적용하여 Y축 방향(세로)으로 배치.
+         ============================================================ -->
+
+    <!-- 좌측 책장 그룹 (도면 좌측의 두 세로 책장) -->
+    <include>
+      <name>bookshelf_left_a</name>
+      <uri>model://Bookshelf_with_Book10</uri>
+      <static>true</static>
+      <!-- 좌측 왼쪽 라인, 세로(Y축 방향)로 세움 -->
+      <pose>-0.5 1.5 0 0 0 1.5708</pose>
+    </include>
+
+    <include>
+      <name>bookshelf_left_b</name>
+      <uri>model://Bookshelf_with_Book10</uri>
+      <static>true</static>
+      <!-- 좌측 오른쪽 라인 -->
+      <pose>0.5 1.5 0 0 0 1.5708</pose>
+    </include>
+
+    <!-- 중앙 책장 그룹 (도면 중앙의 두 세로 책장) -->
+    <include>
+      <name>bookshelf_center_a</name>
+      <uri>model://Bookshelf_with_Book10</uri>
+      <static>true</static>
+      <pose>4.0 1.5 0 0 0 1.5708</pose>
+    </include>
+
+    <include>
+      <name>bookshelf_center_b</name>
+      <uri>model://Bookshelf_with_Book10</uri>
+      <static>true</static>
+      <pose>5.0 1.5 0 0 0 1.5708</pose>
+    </include>
+
+    <!-- 우측 책장 그룹 (도면 우측의 한 세로 책장) -->
+    <include>
+      <name>bookshelf_right</name>
+      <uri>model://Bookshelf_with_Book10</uri>
+      <static>true</static>
+      <pose>9.0 1.5 0 0 0 1.5708</pose>
+    </include>
+
+    <!-- ============================================================
+         Table_on_left (중심점: -6, 3)
+         mesh 파일 없음 → Box 지오메트리 inline 구현
+         DiningTable 여러 개로 구성된 독서 공간 (약 4.5m x 2.5m)
+         ============================================================ -->
+    <model name="table_on_left">
+      <static>true</static>
+      <pose>-6.0 3.0 0 0 0 0</pose>
+      <!-- 테이블 상판 -->
+      <link name="tabletop">
+        <pose>0 0 0.73 0 0 0</pose>
+        <visual name="vis">
+          <geometry><box><size>4.5 2.4 0.05</size></box></geometry>
+          <material><script><name>Gazebo/Wood</name></script></material>
+        </visual>
+        <collision name="col">
+          <geometry><box><size>4.5 2.4 0.05</size></box></geometry>
+        </collision>
+      </link>
+      <!-- 다리 FL -->
+      <link name="leg_fl">
+        <pose>-2.1 -1.0 0.36 0 0 0</pose>
+        <visual name="vis"><geometry><box><size>0.08 0.08 0.72</size></box></geometry><material><script><name>Gazebo/DarkGrey</name></script></material></visual>
+        <collision name="col"><geometry><box><size>0.08 0.08 0.72</size></box></geometry></collision>
+      </link>
+      <link name="leg_fr">
+        <pose>2.1 -1.0 0.36 0 0 0</pose>
+        <visual name="vis"><geometry><box><size>0.08 0.08 0.72</size></box></geometry><material><script><name>Gazebo/DarkGrey</name></script></material></visual>
+        <collision name="col"><geometry><box><size>0.08 0.08 0.72</size></box></geometry></collision>
+      </link>
+      <link name="leg_bl">
+        <pose>-2.1 1.0 0.36 0 0 0</pose>
+        <visual name="vis"><geometry><box><size>0.08 0.08 0.72</size></box></geometry><material><script><name>Gazebo/DarkGrey</name></script></material></visual>
+        <collision name="col"><geometry><box><size>0.08 0.08 0.72</size></box></geometry></collision>
+      </link>
+      <link name="leg_br">
+        <pose>2.1 1.0 0.36 0 0 0</pose>
+        <visual name="vis"><geometry><box><size>0.08 0.08 0.72</size></box></geometry><material><script><name>Gazebo/DarkGrey</name></script></material></visual>
+        <collision name="col"><geometry><box><size>0.08 0.08 0.72</size></box></geometry></collision>
+      </link>
+    </model>
+
+    <!-- ============================================================
+         Library_counter_desk (중심점: -3, -7)
+         mesh 파일 없음 → Box 지오메트리 inline 구현
+         Desk + DiningTable 3개 구성 (약 5m x 2.5m)
+         ============================================================ -->
+    <model name="library_counter_desk">
+      <static>true</static>
+      <pose>-3.0 -7.0 0 0 0 3.14159</pose>
+      <!-- 카운터 상판 -->
+      <link name="countertop">
+        <pose>0 0 0.75 0 0 0</pose>
+        <visual name="vis">
+          <geometry><box><size>5.0 2.3 0.05</size></box></geometry>
+          <material><script><name>Gazebo/Wood</name></script></material>
+        </visual>
+        <collision name="col">
+          <geometry><box><size>5.0 2.3 0.05</size></box></geometry>
+        </collision>
+      </link>
+      <!-- 카운터 전면 패널 -->
+      <link name="front_panel">
+        <pose>0 -1.1 0.375 0 0 0</pose>
+        <visual name="vis">
+          <geometry><box><size>5.0 0.05 0.75</size></box></geometry>
+          <material><script><name>Gazebo/Wood</name></script></material>
+        </visual>
+        <collision name="col">
+          <geometry><box><size>5.0 0.05 0.75</size></box></geometry>
+        </collision>
+      </link>
+      <!-- 다리 FL -->
+      <link name="leg_fl">
+        <pose>-2.3 -1.0 0.36 0 0 0</pose>
+        <visual name="vis"><geometry><box><size>0.08 0.08 0.72</size></box></geometry><material><script><name>Gazebo/DarkGrey</name></script></material></visual>
+        <collision name="col"><geometry><box><size>0.08 0.08 0.72</size></box></geometry></collision>
+      </link>
+      <link name="leg_fr">
+        <pose>2.3 -1.0 0.36 0 0 0</pose>
+        <visual name="vis"><geometry><box><size>0.08 0.08 0.72</size></box></geometry><material><script><name>Gazebo/DarkGrey</name></script></material></visual>
+        <collision name="col"><geometry><box><size>0.08 0.08 0.72</size></box></geometry></collision>
+      </link>
+      <link name="leg_bl">
+        <pose>-2.3 1.0 0.36 0 0 0</pose>
+        <visual name="vis"><geometry><box><size>0.08 0.08 0.72</size></box></geometry><material><script><name>Gazebo/DarkGrey</name></script></material></visual>
+        <collision name="col"><geometry><box><size>0.08 0.08 0.72</size></box></geometry></collision>
+      </link>
+      <link name="leg_br">
+        <pose>2.3 1.0 0.36 0 0 0</pose>
+        <visual name="vis"><geometry><box><size>0.08 0.08 0.72</size></box></geometry><material><script><name>Gazebo/DarkGrey</name></script></material></visual>
+        <collision name="col"><geometry><box><size>0.08 0.08 0.72</size></box></geometry></collision>
+      </link>
+    </model>
+
+    <!-- ============================================================
+         Library_takeout_desk (중심점: 7, -7)
+         mesh 파일 없음 → Box 지오메트리 inline 구현
+         DiningTable 2개 구성 (약 2.5m x 2.5m)
+         ============================================================ -->
+    <model name="library_takeout_desk">
+      <static>true</static>
+      <pose>8.5 -8.5 0 0 0 3.14159</pose>
+      <!-- 상판 -->
+      <link name="tabletop">
+        <pose>0 0 0.73 0 0 0</pose>
+        <visual name="vis">
+          <geometry><box><size>2.4 2.3 0.05</size></box></geometry>
+          <material><script><name>Gazebo/Wood</name></script></material>
+        </visual>
+        <collision name="col">
+          <geometry><box><size>2.4 2.3 0.05</size></box></geometry>
+        </collision>
+      </link>
+      <!-- 전면 패널 -->
+      <link name="front_panel">
+        <pose>0 -1.1 0.375 0 0 0</pose>
+        <visual name="vis">
+          <geometry><box><size>2.4 0.05 0.75</size></box></geometry>
+          <material><script><name>Gazebo/Wood</name></script></material>
+        </visual>
+        <collision name="col">
+          <geometry><box><size>2.4 0.05 0.75</size></box></geometry>
+        </collision>
+      </link>
+      <!-- 다리 4개 -->
+      <link name="leg_fl">
+        <pose>-1.0 -1.0 0.36 0 0 0</pose>
+        <visual name="vis"><geometry><box><size>0.08 0.08 0.72</size></box></geometry><material><script><name>Gazebo/DarkGrey</name></script></material></visual>
+        <collision name="col"><geometry><box><size>0.08 0.08 0.72</size></box></geometry></collision>
+      </link>
+      <link name="leg_fr">
+        <pose>1.0 -1.0 0.36 0 0 0</pose>
+        <visual name="vis"><geometry><box><size>0.08 0.08 0.72</size></box></geometry><material><script><name>Gazebo/DarkGrey</name></script></material></visual>
+        <collision name="col"><geometry><box><size>0.08 0.08 0.72</size></box></geometry></collision>
+      </link>
+      <link name="leg_bl">
+        <pose>-1.0 1.0 0.36 0 0 0</pose>
+        <visual name="vis"><geometry><box><size>0.08 0.08 0.72</size></box></geometry><material><script><name>Gazebo/DarkGrey</name></script></material></visual>
+        <collision name="col"><geometry><box><size>0.08 0.08 0.72</size></box></geometry></collision>
+      </link>
+      <link name="leg_br">
+        <pose>1.0 1.0 0.36 0 0 0</pose>
+        <visual name="vis"><geometry><box><size>0.08 0.08 0.72</size></box></geometry><material><script><name>Gazebo/DarkGrey</name></script></material></visual>
+        <collision name="col"><geometry><box><size>0.08 0.08 0.72</size></box></geometry></collision>
+      </link>
+    </model>
+
+    <!-- ============================================================
+         갈색 박스 장벽 (로봇이 책상 구역과 충돌하지 않도록)
+         책상 상판 높이(0.75m)에 맞춰 높이 설정
+         두께 0.1m, Gazebo/Brown 재질
+         ============================================================ -->
+
+    <!-- 장벽 A: (7, -10) → (7, -7), 세로 3m, x=7 선상 -->
+    <model name="barrier_a">
+      <static>true</static>
+      <pose>7.0 -8.5 0 0 0 0</pose>
+      <link name="wall">
+        <pose>0 0 0.375 0 0 0</pose>
+        <visual name="vis">
+          <geometry><box><size>0.1 3.0 0.75</size></box></geometry>
+          <material><script><name>Gazebo/Brown</name></script></material>
+        </visual>
+        <collision name="col">
+          <geometry><box><size>0.1 3.0 0.75</size></box></geometry>
+        </collision>
+      </link>
+    </model>
+
+    <!-- 장벽 B: (7, -7) → (10, -7), 가로 3m, y=-7 선상 -->
+    <model name="barrier_b">
+      <static>true</static>
+      <pose>8.5 -7.0 0 0 0 0</pose>
+      <link name="wall">
+        <pose>0 0 0.375 0 0 0</pose>
+        <visual name="vis">
+          <geometry><box><size>3.0 0.1 0.75</size></box></geometry>
+          <material><script><name>Gazebo/Brown</name></script></material>
+        </visual>
+        <collision name="col">
+          <geometry><box><size>3.0 0.1 0.75</size></box></geometry>
+        </collision>
+      </link>
+    </model>
+
+    <!-- 장벽 C: (-10, -5) → (0, -5), 가로 10m, y=-5 선상 -->
+    <model name="barrier_c">
+      <static>true</static>
+      <pose>-5.0 -5.0 0 0 0 0</pose>
+      <link name="wall">
+        <pose>0 0 0.375 0 0 0</pose>
+        <visual name="vis">
+          <geometry><box><size>10.0 0.1 0.75</size></box></geometry>
+          <material><script><name>Gazebo/Brown</name></script></material>
+        </visual>
+        <collision name="col">
+          <geometry><box><size>10.0 0.1 0.75</size></box></geometry>
+        </collision>
+      </link>
+    </model>
+
+    <!-- 장벽 D: (0, -5) → (0, -10), 세로 5m, x=0 선상 -->
+    <model name="barrier_d">
+      <static>true</static>
+      <pose>0.0 -7.5 0 0 0 0</pose>
+      <link name="wall">
+        <pose>0 0 0.375 0 0 0</pose>
+        <visual name="vis">
+          <geometry><box><size>0.1 5.0 0.75</size></box></geometry>
+          <material><script><name>Gazebo/Brown</name></script></material>
+        </visual>
+        <collision name="col">
+          <geometry><box><size>0.1 5.0 0.75</size></box></geometry>
+        </collision>
+      </link>
+    </model>
+
+    <!-- ============================================================
+         Anti-Tunneling Barriers for Bookshelves
+         책장의 얇은 판(2cm)을 로봇이 고속으로 통과(Tunneling)하는 현상 방지
+         책장 위치에 두꺼운 투명 충돌 박스를 씌워서 물리적으로 절대 통과 못하게 함
+         ============================================================ -->
+    <model name="anti_tunneling_bookshelves">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+
+      <link name="shelf_left_a_block">
+        <pose>-0.5 1.5 0.5 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.5 1.0 1.0</size></box></geometry></collision>
+      </link>
+      <link name="shelf_left_b_block">
+        <pose>0.5 1.5 0.5 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.5 1.0 1.0</size></box></geometry></collision>
+      </link>
+      <link name="shelf_center_a_block">
+        <pose>4.0 1.5 0.5 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.5 1.0 1.0</size></box></geometry></collision>
+      </link>
+      <link name="shelf_center_b_block">
+        <pose>5.0 1.5 0.5 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.5 1.0 1.0</size></box></geometry></collision>
+      </link>
+      <link name="shelf_right_block">
+        <pose>9.0 1.5 0.5 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.5 1.0 1.0</size></box></geometry></collision>
+      </link>
+    </model>
+
+  </world>
+</sdf>
