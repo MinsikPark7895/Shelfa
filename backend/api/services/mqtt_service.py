@@ -1,11 +1,21 @@
 import paho.mqtt.client as mqtt
 import json
+import os
 
 class MQTTService:
     def __init__(self):
         self.client = mqtt.Client("fastapi_publisher")
         self.broker_host = "localhost"
         self.broker_port = 1883
+        
+        # 환경변수에서 백엔드용 계정 정보 가져오기 (없으면 None)
+        mqtt_user = os.environ.get("MQTT_BACKEND_USER")
+        mqtt_pass = os.environ.get("MQTT_BACKEND_PASSWORD")
+        
+        # 값이 둘 다 존재할 때만 보안(비밀번호) 접속 모드로 설정
+        if mqtt_user and mqtt_pass:
+            self.client.username_pw_set(mqtt_user, mqtt_pass)
+            
         self.connect()
         
     def connect(self):

@@ -49,6 +49,14 @@ class MasterOrchestratorNode(Node):
         self.mqtt_client.on_connect = self.on_mqtt_connect
         self.mqtt_client.on_message = self.on_mqtt_message
         
+        # 환경변수에서 로봇용 계정 정보 가져오기 (없으면 익명 접속 모드)
+        mqtt_user = os.environ.get("MQTT_ROBOT_USER")
+        mqtt_pass = os.environ.get("MQTT_ROBOT_PASSWORD")
+        
+        # 값이 둘 다 존재할 때만 보안(비밀번호) 접속 모드로 설정
+        if mqtt_user and mqtt_pass:
+            self.mqtt_client.username_pw_set(mqtt_user, mqtt_pass)
+        
         try:
             self.mqtt_client.connect(self.mqtt_broker, self.mqtt_port, 60)
             self.mqtt_client.loop_start() 
