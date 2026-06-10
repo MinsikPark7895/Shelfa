@@ -5,7 +5,7 @@ import os
 class MQTTService:
     def __init__(self):
         self.client = mqtt.Client("fastapi_publisher")
-        self.broker_host = "localhost"
+        self.broker_host = os.environ.get("SHELFA_MQTT_BROKER", "localhost")
         self.broker_port = 1883
         
         # 환경변수에서 백엔드용 계정 정보 가져오기 (없으면 None)
