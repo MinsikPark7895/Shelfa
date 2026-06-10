@@ -89,8 +89,8 @@ services:
     container_name: shelfa_mqtt
     restart: unless-stopped
     ports:
-      - "127.0.0.1:1883:1883"
-      - "127.0.0.1:9001:9001"
+      - "1883:1883"
+      - "9001:9001"
     volumes:
       - ./mosquitto/config/mosquitto.${SHELFA_ENV:-dev}.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto_data:/mosquitto/data
