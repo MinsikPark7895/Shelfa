@@ -626,3 +626,4 @@ AMENT_IGNORE
 
 .vscode/mosquitto/config/passwd
 mosquitto/config/passwd
+.vscode/
