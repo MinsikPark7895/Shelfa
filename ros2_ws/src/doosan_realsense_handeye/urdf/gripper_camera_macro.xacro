@@ -1,0 +1,170 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- Fixed-pose RH-P12-RN-A geometry for RViz/robot_state_publisher without gripper joint_states. -->
+  <xacro:property name="rh_p12_mesh_dir" value="package://rh_p12_rn_a_description/meshes"/>
+
+  <xacro:macro name="rh_p12_mesh_link" params="
+    name mesh
+    mass inertial_xyz
+    ixx ixy ixz iyy iyz izz
+  ">
+    <link name="${name}">
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${rh_p12_mesh_dir}/${mesh}" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${rh_p12_mesh_dir}/${mesh}" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="grey">
+          <color rgba="0.2 0.2 0.2 1"/>
+        </material>
+      </visual>
+      <inertial>
+        <origin xyz="${inertial_xyz}" rpy="0 0 0"/>
+        <mass value="${mass}"/>
+        <inertia ixx="${ixx}" ixy="${ixy}" ixz="${ixz}" iyy="${iyy}" iyz="${iyz}" izz="${izz}"/>
+      </inertial>
+    </link>
+  </xacro:macro>
+
+  <xacro:macro name="e0509_gripper_camera" params="
+    parent_link
+    prefix:=eih_
+    gripper_x:=0 gripper_y:=0 gripper_z:=0
+    gripper_roll:=0 gripper_pitch:=0 gripper_yaw:=0
+    camera_x:=0.055 camera_y:=0 camera_z:=0.055
+    camera_roll:=0 camera_pitch:=0 camera_yaw:=0
+    camera_mass:=0.234
+    color_x:=0 color_y:=0 color_z:=0
+    color_roll:=0 color_pitch:=0 color_yaw:=0
+    depth_x:=0 depth_y:=0 depth_z:=0
+    depth_roll:=0 depth_pitch:=0 depth_yaw:=0
+  ">
+    <xacro:property name="camera_optical_rpy" value="-1.57079632679 0 -1.57079632679"/>
+
+    <xacro:rh_p12_mesh_link
+      name="${prefix}rh_p12_rn_base"
+      mesh="base.stl"
+      mass="0.236"
+      inertial_xyz="0.000 0.000 0.032"
+      ixx="0.000001" ixy="0.0" ixz="0.0" iyy="0.000001" iyz="0.0" izz="0.000001"/>
+    <xacro:rh_p12_mesh_link
+      name="${prefix}rh_p12_rn_r1"
+      mesh="r1.stl"
+      mass="0.068"
+      inertial_xyz="0.000 0.034 0.004"
+      ixx="0.000001" ixy="0.0" ixz="0.0" iyy="0.000001" iyz="0.0" izz="0.000001"/>
+    <xacro:rh_p12_mesh_link
+      name="${prefix}rh_p12_rn_r2"
+      mesh="r2.stl"
+      mass="0.022"
+      inertial_xyz="0.000 0.006 0.011"
+      ixx="0.000001" ixy="0.0" ixz="0.0" iyy="0.000001" iyz="0.0" izz="0.000001"/>
+    <xacro:rh_p12_mesh_link
+      name="${prefix}rh_p12_rn_l1"
+      mesh="l1.stl"
+      mass="0.068"
+      inertial_xyz="0.000 -0.034 0.004"
+      ixx="0.000001" ixy="0.0" ixz="0.0" iyy="0.000001" iyz="0.0" izz="0.000001"/>
+    <xacro:rh_p12_mesh_link
+      name="${prefix}rh_p12_rn_l2"
+      mesh="l2.stl"
+      mass="0.022"
+      inertial_xyz="0.000 -0.006 0.011"
+      ixx="0.000001" ixy="0.0" ixz="0.0" iyy="0.000001" iyz="0.0" izz="0.000001"/>
+
+    <joint name="${prefix}gripper_mount_joint" type="fixed">
+      <parent link="${parent_link}"/>
+      <child link="${prefix}rh_p12_rn_base"/>
+      <origin xyz="${gripper_x} ${gripper_y} ${gripper_z}" rpy="${gripper_roll} ${gripper_pitch} ${gripper_yaw}"/>
+    </joint>
+
+    <joint name="${prefix}rh_r1" type="fixed">
+      <parent link="${prefix}rh_p12_rn_base"/>
+      <child link="${prefix}rh_p12_rn_r1"/>
+      <origin xyz="0.0 0.008 0.048" rpy="0 0 0"/>
+    </joint>
+    <joint name="${prefix}rh_r2" type="fixed">
+      <parent link="${prefix}rh_p12_rn_r1"/>
+      <child link="${prefix}rh_p12_rn_r2"/>
+      <origin xyz="0.0 0.0493634 0.0285" rpy="0 0 0"/>
+    </joint>
+    <joint name="${prefix}rh_l1" type="fixed">
+      <parent link="${prefix}rh_p12_rn_base"/>
+      <child link="${prefix}rh_p12_rn_l1"/>
+      <origin xyz="0.0 -0.008 0.048" rpy="0 0 0"/>
+    </joint>
+    <joint name="${prefix}rh_l2" type="fixed">
+      <parent link="${prefix}rh_p12_rn_l1"/>
+      <child link="${prefix}rh_p12_rn_l2"/>
+      <origin xyz="0.0 -0.0493634 0.0285" rpy="0 0 0"/>
+    </joint>
+
+    <link name="camera_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.025 0.025 0.090"/>
+        </geometry>
+        <material name="camera_black">
+          <color rgba="0.02 0.02 0.02 1.0"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.025 0.025 0.090"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="${camera_mass}"/>
+        <inertia ixx="${camera_mass * (0.025 * 0.025 + 0.090 * 0.090) / 12.0}"
+                 ixy="0.0"
+                 ixz="0.0"
+                 iyy="${camera_mass * (0.025 * 0.025 + 0.090 * 0.090) / 12.0}"
+                 iyz="0.0"
+                 izz="${camera_mass * (0.025 * 0.025 + 0.025 * 0.025) / 12.0}"/>
+      </inertial>
+    </link>
+
+    <joint name="camera_mount_joint" type="fixed">
+      <parent link="${parent_link}"/>
+      <child link="camera_link"/>
+      <origin xyz="${camera_x} ${camera_y} ${camera_z}" rpy="${camera_roll} ${camera_pitch} ${camera_yaw}"/>
+    </joint>
+
+    <link name="camera_color_frame"/>
+    <joint name="camera_color_joint" type="fixed">
+      <parent link="camera_link"/>
+      <child link="camera_color_frame"/>
+      <origin xyz="${color_x} ${color_y} ${color_z}" rpy="${color_roll} ${color_pitch} ${color_yaw}"/>
+    </joint>
+
+    <link name="camera_color_optical_frame"/>
+    <joint name="camera_color_optical_joint" type="fixed">
+      <parent link="camera_color_frame"/>
+      <child link="camera_color_optical_frame"/>
+      <origin xyz="0 0 0" rpy="${camera_optical_rpy}"/>
+    </joint>
+
+    <link name="camera_depth_frame"/>
+    <joint name="camera_depth_joint" type="fixed">
+      <parent link="camera_link"/>
+      <child link="camera_depth_frame"/>
+      <origin xyz="${depth_x} ${depth_y} ${depth_z}" rpy="${depth_roll} ${depth_pitch} ${depth_yaw}"/>
+    </joint>
+
+    <link name="camera_depth_optical_frame"/>
+    <joint name="camera_depth_optical_joint" type="fixed">
+      <parent link="camera_depth_frame"/>
+      <child link="camera_depth_optical_frame"/>
+      <origin xyz="0 0 0" rpy="${camera_optical_rpy}"/>
+    </joint>
+  </xacro:macro>
+</robot>

@@ -1,0 +1,118 @@
+aruco_handeye_target_tf:
+  ros__parameters:
+    base_frame: base_link
+    tool_frame: link_6
+    camera_frame: camera_color_optical_frame
+    marker_frame: aruco_marker_6
+    calibration_result_path: /home/user/Shelfa/ros2_ws/src/doosan_realsense_handeye/data/calibration_result/T_tool_camera.yaml
+    tf_timeout_sec: 0.5
+    publish_period_sec: 0.05
+    output_period_sec: 0.5
+    approach_offset_x: 0.0
+    approach_offset_y: 0.0
+    approach_offset_z: 0.30
+    target_frame_name: detected_target
+    approach_frame_name: target_approach
+    publish_aligned_goal: true
+    goal_frame_name: aligned_tcp_goal
+    align_axis: z
+    axis_direction: opposite
+
+handeye_sample_collector:
+  ros__parameters:
+    base_frame: base_link
+    tool_frame: link_6
+    camera_frame: camera_color_optical_frame
+    color_image_topic: /camera/camera/color/image_raw
+    camera_info_topic: /camera/camera/color/camera_info
+    board_type: charuco
+    sample_save_path: /home/user/Shelfa/ros2_ws/src/doosan_realsense_handeye/data/samples/handeye_samples.yaml
+    calibration_result_path: /home/user/Shelfa/ros2_ws/src/doosan_realsense_handeye/data/calibration_result/T_tool_camera.yaml
+    handeye_method: TSAI
+    tf_timeout_sec: 0.5
+    min_detection_interval_sec: 0.05
+    detection_log_period_sec: 2.0
+    charuco:
+      squares_x: 7
+      squares_y: 5
+      square_length: 0.030
+      marker_length: 0.022
+      dictionary: DICT_4X4_50
+      min_corners: 8
+    aruco:
+      marker_length: 0.050
+      marker_id: 6
+      dictionary: DICT_4X4_50
+
+object_to_base_transformer:
+  ros__parameters:
+    base_frame: base_link
+    tool_frame: link_6
+    calibration_result_path: /home/user/Shelfa/ros2_ws/src/doosan_realsense_handeye/data/calibration_result/T_tool_camera.yaml
+    tf_timeout_sec: 0.5
+
+validate_handeye:
+  ros__parameters:
+    sample_save_path: /home/user/Shelfa/ros2_ws/src/doosan_realsense_handeye/data/samples/handeye_samples.yaml
+    calibration_result_path: /home/user/Shelfa/ros2_ws/src/doosan_realsense_handeye/data/calibration_result/T_tool_camera.yaml
+
+live_target_to_base:
+  ros__parameters:
+    base_frame: base_link
+    tool_frame: link_6
+    camera_frame: camera_color_optical_frame
+    color_image_topic: /camera/camera/color/image_raw
+    camera_info_topic: /camera/camera/color/camera_info
+    calibration_result_path: /home/user/Shelfa/ros2_ws/src/doosan_realsense_handeye/data/calibration_result/T_tool_camera.yaml
+    board_type: aruco
+    tf_timeout_sec: 0.5
+    min_detection_interval_sec: 0.05
+    detection_log_period_sec: 2.0
+    target_output_period_sec: 0.5
+    approach_offset_x: 0.0
+    approach_offset_y: 0.0
+    approach_offset_z: 0.30
+    target_frame_name: detected_target
+    approach_frame_name: target_approach
+    publish_aligned_goal: true
+    goal_frame_name: aligned_tcp_goal
+    align_axis: z
+    axis_direction: opposite
+    charuco:
+      squares_x: 7
+      squares_y: 5
+      square_length: 0.030
+      marker_length: 0.022
+      dictionary: DICT_4X4_50
+      min_corners: 8
+    aruco:
+      marker_length: 0.038
+      marker_id: 6
+      dictionary: DICT_4X4_50
+
+align_to_marker_preview:
+  ros__parameters:
+    base_frame: base_link
+    tool_frame: link_6
+    target_frame: detected_target
+    approach_frame: target_approach
+    goal_frame: aligned_tcp_goal
+    align_axis: z
+    axis_direction: opposite
+    output_period_sec: 0.5
+    tf_timeout_sec: 0.5
+
+move_to_approach:
+  ros__parameters:
+    base_frame: base_link
+    tool_frame: link_6
+    target_frame: target_approach
+    execute: false
+    max_step_m: 0.30
+    vel: 20.0
+    acc: 40.0
+    move_service: /dsr01/motion/move_line
+    current_posx_service: /dsr01/aux_control/get_current_posx
+    task_ref: 0
+    tf_timeout_sec: 0.5
+    service_timeout_sec: 10.0

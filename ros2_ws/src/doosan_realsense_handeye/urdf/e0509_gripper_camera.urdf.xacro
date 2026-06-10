@@ -1,0 +1,111 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="e0509">
+    <!-- See README.md for xacro, check_urdf, robot_state_publisher, and RViz commands. -->
+    <xacro:arg name="initial_positions_file" default="$(find dsr_moveit_config_e0509)/config/initial_positions.yaml" />
+    <xacro:arg name="use_fake_ros2_control" default="false"/>
+    <xacro:arg name="name" default="dsr01"/>
+    <xacro:arg name="host" default="127.0.0.1"/>
+    <xacro:arg name="rt_host" default="192.168.137.50"/>
+    <xacro:arg name="port" default="12345"/>
+    <xacro:arg name="mode" default="real"/>
+    <xacro:arg name="model" default="e0509"/>
+    <xacro:arg name="update_rate" default="100"/>
+
+    <xacro:property name="fake_ros2_control" value="$(arg use_fake_ros2_control)"/>
+
+    <!-- Temporary eye-in-hand mounting offsets. Update these after calibration. -->
+    <xacro:property name="tool_parent_link" value="tool0"/>
+    <xacro:property name="tool0_mount_xyz" value="0 0 0"/>
+    <xacro:property name="tool0_mount_rpy" value="3.1415926535 -1.570796327 0"/>
+    <xacro:property name="gripper_mount_x" value="0"/>
+    <xacro:property name="gripper_mount_y" value="0"/>
+    <xacro:property name="gripper_mount_z" value="0"/>
+    <xacro:property name="gripper_mount_roll" value="1.570796327"/>
+    <xacro:property name="gripper_mount_pitch" value="0"/>
+    <xacro:property name="gripper_mount_yaw" value="1.570796327"/>
+    <xacro:property name="camera_mount_x" value="0.045"/>
+    <xacro:property name="camera_mount_y" value="0.04"/>
+    <xacro:property name="camera_mount_z" value="0"/>
+    <xacro:property name="camera_mount_roll" value="0"/>
+    <xacro:property name="camera_mount_pitch" value="0"/>
+    <xacro:property name="camera_mount_yaw" value="0"/>
+    <!-- RH-P12-RN-A gripper inertials sum to 0.416 kg; this makes gripper + camera + bracket <= 0.650 kg. -->
+    <xacro:property name="camera_bracket_mass" value="0.234"/>
+    <xacro:property name="camera_color_x" value="0"/>
+    <xacro:property name="camera_color_y" value="0"/>
+    <xacro:property name="camera_color_z" value="0"/>
+    <xacro:property name="camera_color_roll" value="0"/>
+    <xacro:property name="camera_color_pitch" value="0"/>
+    <xacro:property name="camera_color_yaw" value="0"/>
+    <xacro:property name="camera_depth_x" value="0"/>
+    <xacro:property name="camera_depth_y" value="0"/>
+    <xacro:property name="camera_depth_z" value="0"/>
+    <xacro:property name="camera_depth_roll" value="0"/>
+    <xacro:property name="camera_depth_pitch" value="0"/>
+    <xacro:property name="camera_depth_yaw" value="0"/>
+
+    <link name="world"/>
+    <joint name="world_fixed" type="fixed">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <parent link="world"/>
+        <child link="base_link"/>
+    </joint>
+    <!-- Import e0509 urdf file -->
+    <xacro:include filename="$(find dsr_description2)/urdf/e0509.urdf" />
+
+    <!-- Recreate the vendor URDF's commented tool0 frame without modifying dsr_description2. -->
+    <link name="tool0"/>
+    <joint name="joint_6-tool0" type="fixed">
+        <origin xyz="${tool0_mount_xyz}" rpy="${tool0_mount_rpy}"/>
+        <parent link="link_6"/>
+        <child link="tool0"/>
+    </joint>
+
+    <!-- Attach RH-P12-RN-A gripper and RealSense-compatible camera frames to tool0. -->
+    <xacro:include filename="gripper_camera_macro.xacro" />
+    <xacro:e0509_gripper_camera
+        parent_link="${tool_parent_link}"
+        prefix="eih_"
+        gripper_x="${gripper_mount_x}"
+        gripper_y="${gripper_mount_y}"
+        gripper_z="${gripper_mount_z}"
+        gripper_roll="${gripper_mount_roll}"
+        gripper_pitch="${gripper_mount_pitch}"
+        gripper_yaw="${gripper_mount_yaw}"
+        camera_x="${camera_mount_x}"
+        camera_y="${camera_mount_y}"
+        camera_z="${camera_mount_z}"
+        camera_roll="${camera_mount_roll}"
+        camera_pitch="${camera_mount_pitch}"
+        camera_yaw="${camera_mount_yaw}"
+        camera_mass="${camera_bracket_mass}"
+        color_x="${camera_color_x}"
+        color_y="${camera_color_y}"
+        color_z="${camera_color_z}"
+        color_roll="${camera_color_roll}"
+        color_pitch="${camera_color_pitch}"
+        color_yaw="${camera_color_yaw}"
+        depth_x="${camera_depth_x}"
+        depth_y="${camera_depth_y}"
+        depth_z="${camera_depth_z}"
+        depth_roll="${camera_depth_roll}"
+        depth_pitch="${camera_depth_pitch}"
+        depth_yaw="${camera_depth_yaw}" />
+
+    <!-- Import e0509 ros2_control description. Real Doosan hardware is the default for bringup. -->
+    <xacro:if value="${fake_ros2_control}">
+        <xacro:include filename="$(find dsr_moveit_config_e0509)/config/dsr.ros2_control.xacro" />
+        <xacro:dsr_moveit_ros2_control name="DSRFakeSystem" initial_positions_file="$(arg initial_positions_file)"/>
+    </xacro:if>
+    <xacro:unless value="${fake_ros2_control}">
+        <xacro:include filename="$(find dsr_description2)/ros2_control/e0509.ros2_control.xacro" />
+        <xacro:e0509_ros2_control
+            name="$(arg model)"
+            host="$(arg host)"
+            rt_host="$(arg rt_host)"
+            port="$(arg port)"
+            mode="$(arg mode)"
+            model="$(arg model)"
+            update_rate="$(arg update_rate)" />
+    </xacro:unless>
+</robot>

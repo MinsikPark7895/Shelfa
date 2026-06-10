@@ -18,6 +18,7 @@ from tf2_ros import Buffer, TransformException, TransformListener
 
 from .charuco_detector import BoardPoseDetector, camera_info_to_matrices
 from .config_utils import nested_get, node_parameters
+from .logger_utils import safe_log_info
 from .transform_utils import matrix_to_yaml_dict, transform_stamped_to_matrix
 
 
@@ -50,9 +51,10 @@ class HandeyeSampleCollector(Node):
             "Measurement-only collector. Move the robot manually, then press 's' "
             "or call ~/save_sample. This node never sends robot motion commands."
         )
-        self.get_logger().info(
+        safe_log_info(
+            self.get_logger(),
             f"Frames: {self.base_frame} -> {self.tool_frame}, camera={self.camera_frame}; "
-            f"topics: image={self.color_image_topic}, camera_info={self.camera_info_topic}"
+            f"topics: image={self.color_image_topic}, camera_info={self.camera_info_topic}",
         )
 
     def _declare_parameters(self):
@@ -76,14 +78,14 @@ class HandeyeSampleCollector(Node):
             "sample_save_path",
             defaults.get(
                 "sample_save_path",
-                "/home/dakae/ros2_ws/src/doosan_realsense_handeye/data/samples/handeye_samples.yaml",
+                "/home/user/Shelfa/ros2_ws/src/doosan_realsense_handeye/data/samples/handeye_samples.yaml",
             ),
         )
         self.declare_parameter(
             "calibration_result_path",
             defaults.get(
                 "calibration_result_path",
-                "/home/dakae/ros2_ws/src/doosan_realsense_handeye/data/calibration_result/T_tool_camera.yaml",
+                "/home/user/Shelfa/ros2_ws/src/doosan_realsense_handeye/data/calibration_result/T_tool_camera.yaml",
             ),
         )
         self.declare_parameter("handeye_method", defaults.get("handeye_method", "TSAI"))
@@ -229,7 +231,7 @@ class HandeyeSampleCollector(Node):
         with sample_path.open("w", encoding="utf-8") as stream:
             yaml.safe_dump(data, stream, sort_keys=False)
         message = f"Saved sample {len(samples)} to {sample_path}"
-        self.get_logger().info(message)
+        safe_log_info(self.get_logger(), message)
         return True, message
 
     @staticmethod
@@ -252,7 +254,7 @@ def keyboard_loop(node, stop_event):
     old_settings = termios.tcgetattr(fd)
     try:
         tty.setcbreak(fd)
-        node.get_logger().info("Keyboard: press 's' to save a sample, 'q' to quit.")
+        safe_log_info(node.get_logger(), "Keyboard: press 's' to save a sample, 'q' to quit.")
         while rclpy.ok() and not stop_event.is_set():
             readable, _, _ = select.select([sys.stdin], [], [], 0.1)
             if not readable:
@@ -292,3 +294,4 @@ def main(args=None):
 
 if __name__ == "__main__":
     main()
+
