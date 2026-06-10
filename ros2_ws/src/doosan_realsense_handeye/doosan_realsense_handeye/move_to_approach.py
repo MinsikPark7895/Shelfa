@@ -10,6 +10,7 @@ from rclpy.node import Node
 from tf2_ros import Buffer, TransformException, TransformListener
 
 from .config_utils import node_parameters
+from .logger_utils import safe_log_info
 from .transform_utils import transform_stamped_to_matrix
 
 
@@ -226,7 +227,8 @@ class MoveToApproach(Node):
         return request
 
     def _print_plan(self, current_xyz, target_xyz, current_task_pose, distance_m, request):
-        self.get_logger().info(
+        safe_log_info(
+            self.get_logger(),
             "\n"
             "Computed one-shot Doosan MoveLine plan to target_approach\n"
             f"  current {self.tool_frame} xyz [m]: "
@@ -242,7 +244,7 @@ class MoveToApproach(Node):
             f"blend_type={request.blend_type}, sync_type={request.sync_type}\n"
             f"  current_posx_service={self.current_posx_service}, task_ref={self.task_ref}\n"
             f"  move_service={self.move_service}\n"
-            f"  execute={self.execute}"
+            f"  execute={self.execute}",
         )
 
     def _call_move_line(self, request):
@@ -265,7 +267,7 @@ class MoveToApproach(Node):
 
         response = future.result()
         if response.success:
-            self.get_logger().info("move_line service returned success=true")
+            safe_log_info(self.get_logger(), "move_line service returned success=true")
         else:
             self.get_logger().error("move_line service returned success=false")
         self._shutdown()
@@ -279,7 +281,7 @@ class MoveToApproach(Node):
         return "[" + ", ".join(f"{float(value):.3f}" for value in values) + "]"
 
     def _shutdown(self):
-        self.get_logger().info("move_to_approach finished.")
+        safe_log_info(self.get_logger(), "move_to_approach finished.")
         rclpy.shutdown()
 
 

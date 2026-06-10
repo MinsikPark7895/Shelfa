@@ -15,6 +15,7 @@ from tf2_ros import Buffer, TransformBroadcaster, TransformException, TransformL
 
 from .charuco_detector import BoardPoseDetector, camera_info_to_matrices
 from .config_utils import nested_get, node_parameters
+from .logger_utils import safe_log_info
 from .transform_utils import (
     make_transform,
     matrix_from_yaml_dict,
@@ -60,16 +61,18 @@ class LiveTargetToBase(Node):
             "Measurement-only live target transform. This node reads image, camera_info, TF, "
             "and calibration YAML only; it never sends robot motion commands."
         )
-        self.get_logger().info(
+        safe_log_info(
+            self.get_logger(),
             f"Using {self.base_frame} -> {self.tool_frame} and calibration "
             f"{self.calibration_result_path}. The T_tool_camera YAML key is interpreted as "
-            f"T_{self.tool_frame}_camera for this setup."
+            f"T_{self.tool_frame}_camera for this setup.",
         )
-        self.get_logger().info(
+        safe_log_info(
+            self.get_logger(),
             "Target approach offset in target frame [m]: "
             f"x={self.approach_offset_x:.6f}, "
             f"y={self.approach_offset_y:.6f}, "
-            f"z={self.approach_offset_z:.6f}"
+            f"z={self.approach_offset_z:.6f}",
         )
 
     def _declare_parameters(self):
@@ -95,7 +98,7 @@ class LiveTargetToBase(Node):
             "calibration_result_path",
             defaults.get(
                 "calibration_result_path",
-                "/home/dakae/ros2_ws/src/doosan_realsense_handeye/data/calibration_result/T_tool_camera.yaml",
+                "/home/user/Shelfa/ros2_ws/src/doosan_realsense_handeye/data/calibration_result/T_tool_camera.yaml",
             ),
         )
         self.declare_parameter("tf_timeout_sec", defaults.get("tf_timeout_sec", 0.5))
@@ -131,6 +134,16 @@ class LiveTargetToBase(Node):
             "approach_frame_name",
             defaults.get("approach_frame_name", "target_approach"),
         )
+        self.declare_parameter(
+            "publish_aligned_goal",
+            defaults.get("publish_aligned_goal", True),
+        )
+        self.declare_parameter(
+            "goal_frame_name",
+            defaults.get("goal_frame_name", "aligned_tcp_goal"),
+        )
+        self.declare_parameter("align_axis", defaults.get("align_axis", "z"))
+        self.declare_parameter("axis_direction", defaults.get("axis_direction", "opposite"))
         self.declare_parameter("charuco.squares_x", nested_get(defaults, "charuco.squares_x", 7))
         self.declare_parameter("charuco.squares_y", nested_get(defaults, "charuco.squares_y", 5))
         self.declare_parameter(
@@ -182,6 +195,10 @@ class LiveTargetToBase(Node):
         self.approach_offset_z = float(self.get_parameter("approach_offset_z").value)
         self.target_frame_name = str(self.get_parameter("target_frame_name").value)
         self.approach_frame_name = str(self.get_parameter("approach_frame_name").value)
+        self.publish_aligned_goal = bool(self.get_parameter("publish_aligned_goal").value)
+        self.goal_frame_name = str(self.get_parameter("goal_frame_name").value)
+        self.align_axis = str(self.get_parameter("align_axis").value).lower()
+        self.axis_direction = str(self.get_parameter("axis_direction").value).lower()
         self.board_config = {
             "charuco": {
                 "squares_x": int(self.get_parameter("charuco.squares_x").value),
@@ -197,6 +214,17 @@ class LiveTargetToBase(Node):
                 "dictionary": str(self.get_parameter("aruco.dictionary").value),
             },
         }
+        if self.align_axis != "z":
+            raise ValueError("align_axis currently supports only 'z'")
+        if self.axis_direction not in ("same", "opposite"):
+            raise ValueError("axis_direction must be 'same' or 'opposite'")
+
+    def _load_calibration_result(self, calibration_result_path):
+        with Path(calibration_result_path).open("r", encoding="utf-8") as stream:
+            data = yaml.safe_load(stream) or {}
+        if "T_tool_camera" not in data:
+            raise ValueError(f"{calibration_result_path} does not contain T_tool_camera")
+        return matrix_from_yaml_dict(data["T_tool_camera"])
 
     def _on_camera_info(self, msg):
         self.latest_camera_info = msg
@@ -252,7 +280,8 @@ class LiveTargetToBase(Node):
 
         target_translation, target_euler = self._pose_components(t_base_target)
         approach_translation, approach_euler = self._pose_components(t_base_approach)
-        self.get_logger().info(
+        safe_log_info(
+            self.get_logger(),
             "\n"
             f"T_{self.base_frame}_target from live {self.board_type} detection\n"
             f"  target xyz [m]: {target_translation[0]:.6f}, "
@@ -267,7 +296,7 @@ class LiveTargetToBase(Node):
             f"  detection: markers={detection_info.get('marker_count')}, "
             f"corners={detection_info.get('corner_count')}, "
             f"dictionary={detection_info.get('dictionary')}, "
-            f"marker_id={detection_info.get('marker_id', 'n/a')}"
+            f"marker_id={detection_info.get('marker_id', 'n/a')}",
         )
 
     def _publish_pose_tf(self, transform, child_frame_id, stamp):
@@ -288,16 +317,9 @@ class LiveTargetToBase(Node):
 
     @staticmethod
     def _pose_components(transform):
-        return transform[:3, 3], matrix_to_euler_xyz(transform[:3, :3])
-
-    @staticmethod
-    def _load_calibration_result(path):
-        calibration_path = Path(path)
-        with calibration_path.open("r", encoding="utf-8") as stream:
-            data = yaml.safe_load(stream) or {}
-        if "T_tool_camera" not in data:
-            raise ValueError(f"{calibration_path} does not contain T_tool_camera")
-        return np.asarray(matrix_from_yaml_dict(data["T_tool_camera"]), dtype=float)
+        translation = transform[:3, 3]
+        euler = matrix_to_euler_xyz(transform[:3, :3])
+        return translation, euler
 
 
 def main(args=None):
@@ -318,3 +340,4 @@ def main(args=None):
 
 if __name__ == "__main__":
     main()
+
