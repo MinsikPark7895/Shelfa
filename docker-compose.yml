@@ -93,6 +93,8 @@ services:
       - "9001:9001"
     volumes:
       - ./mosquitto/config/mosquitto.${SHELFA_ENV:-dev}.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/config/passwd:/mosquitto/config/passwd:ro
+      - ./mosquitto/config/acl:/mosquitto/config/acl:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
 
