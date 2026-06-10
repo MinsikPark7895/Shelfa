@@ -2,15 +2,21 @@ version: '3.8'
 
 services:
   ros2:
+    profiles: ["robot"]  # 로컬 로봇 PC 전용 - GCP CI/CD 기본 배포에서 제외
     build:
       context: ./ros2_ws
       dockerfile: Dockerfile
     container_name: ros2_core
     privileged: true # 카메라 등 하드웨어 장치 접근을 위해 필수
     network_mode: host # ROS 2 DDS 통신을 위해 호스트 네트워크 사용 권장
+    environment:
+      - ROS_DOMAIN_ID=0
+      - MQTT_BROKER=shelfa.co.kr  # GCP 서버 MQTT 브로커 주소
+      - MQTT_PORT=1883
     volumes:
       - /dev:/dev # 로봇 시리얼 연결, 웹캠 등 USB 장치 마운트
       - ./ros2_ws/src:/ros2_ws/src # 로컬 코드 변경을 컨테이너에 즉시 반영
+      - ./worlds:/ros2_ws/worlds   # Gazebo 월드 파일 마운트
     stdin_open: true
     tty: true
 
@@ -86,7 +92,7 @@ services:
       - "127.0.0.1:1883:1883"
       - "127.0.0.1:9001:9001"
     volumes:
-      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/config/mosquitto.${SHELFA_ENV:-dev}.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
 

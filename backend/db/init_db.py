@@ -29,3 +29,18 @@ def init_db_seed(db: Session) -> None:
         db.commit()
         db.refresh(user)
         print(f"✅ 최고 관리자 계정이 생성되었습니다: {settings.FIRST_SUPERUSER_EMAIL}")
+
+    # 3. 책들의 shelf_location 자동 할당 (로봇 주행을 위한 위치 지정)
+    # 기존에 책들이 저장되어 있지만 위치값이 없는 경우 ZONE_1, ZONE_2, ZONE_3 중 하나를 부여합니다.
+    books = db.query(models.Book).all()
+    if books:
+        zones = ["ZONE_1", "ZONE_2", "ZONE_3"]
+        updated_count = 0
+        for i, book in enumerate(books):
+            if not book.shelf_location or book.shelf_location not in zones:
+                book.shelf_location = zones[i % 3]
+                updated_count += 1
+                
+        if updated_count > 0:
+            db.commit()
+            print(f"✅ 총 {updated_count}권의 책에 로봇 픽업 위치(ZONE_1~3)가 성공적으로 할당되었습니다.")
