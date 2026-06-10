@@ -12,12 +12,22 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument("config_file", default_value=default_config),
+            DeclareLaunchArgument("x", default_value="0.1"),
+            DeclareLaunchArgument("y", default_value="0.0"),
+            DeclareLaunchArgument("z", default_value="0.5"),
             Node(
                 package="doosan_realsense_handeye",
-                executable="validate_handeye",
-                name="validate_handeye",
+                executable="object_to_base_transformer",
+                name="object_to_base_transformer",
                 output="screen",
-                arguments=["--config", LaunchConfiguration("config_file")],
+                arguments=[
+                    "--config",
+                    LaunchConfiguration("config_file"),
+                    "--point",
+                    LaunchConfiguration("x"),
+                    LaunchConfiguration("y"),
+                    LaunchConfiguration("z"),
+                ],
             ),
         ]
     )
