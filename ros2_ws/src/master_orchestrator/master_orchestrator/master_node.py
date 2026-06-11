@@ -78,8 +78,8 @@ class MasterOrchestratorNode(Node):
         req.pose.header.frame_id = 'map'
         # 파이썬 get_clock()은 동기식이므로 asyncio 환경에서 주의해서 사용해야 하나, 이 노드에서는 가능
         req.pose.header.stamp = self.get_clock().now().to_msg()
-        req.pose.pose.pose.position.x = 2.0
-        req.pose.pose.pose.position.y = -4.0
+        req.pose.pose.pose.position.x = 0.0
+        req.pose.pose.pose.position.y = 0.0
         req.pose.pose.pose.position.z = 0.01
         req.pose.pose.pose.orientation = euler_to_quaternion(0.0)
         
