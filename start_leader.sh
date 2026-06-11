@@ -17,7 +17,7 @@ export ROS_LOCALHOST_ONLY=0
 # 1. Gazebo 실행
 # ==========================================
 echo "[1/3] 🌐 가상 세계(Gazebo)를 시작합니다..."
-ros2 launch turtlebot3_gazebo library_layout.launch.py &
+ros2 launch turtlebot3_gazebo turtlebot3_world.launch.py &
 GAZEBO_PID=$!
 
 # 가제보가 완전히 켜져서 시계(time)가 돌기 시작할 때까지 10초 대기
