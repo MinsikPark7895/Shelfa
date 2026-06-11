@@ -17,8 +17,8 @@ import math
 
 # 구역별 목적지 및 홈 위치 좌표 (새 SLAM 지도 기준 - Publish Point로 직접 측정)
 SEMANTIC_MAP = {
-    "ZONE_1": {"x": 4.000,  "y": 3.000,  "yaw": 0.0},
-    "ZONE_2": {"x": 0.400,  "y": 2.500,  "yaw": 0.0},
+    "ZONE_1": {"x": 0.400,  "y": 2.500,  "yaw": 0.0},
+    "ZONE_2": {"x": 4.000,  "y": 3.000,  "yaw": 0.0},
     "ZONE_3": {"x": -3.000, "y": 4.000,  "yaw": 0.0},
     "HOME":   {"x": 6.700,  "y": -1.700, "yaw": 0.0}
 }
@@ -78,8 +78,8 @@ class MasterOrchestratorNode(Node):
         req.pose.header.frame_id = 'map'
         # 파이썬 get_clock()은 동기식이므로 asyncio 환경에서 주의해서 사용해야 하나, 이 노드에서는 가능
         req.pose.header.stamp = self.get_clock().now().to_msg()
-        req.pose.pose.pose.position.x = 0.0
-        req.pose.pose.pose.position.y = 0.0
+        req.pose.pose.pose.position.x = 2.0
+        req.pose.pose.pose.position.y = -4.0
         req.pose.pose.pose.position.z = 0.01
         req.pose.pose.pose.orientation = euler_to_quaternion(0.0)
         

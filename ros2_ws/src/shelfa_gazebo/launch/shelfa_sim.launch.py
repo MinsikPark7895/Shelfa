@@ -65,8 +65,8 @@ def generate_launch_description():
         arguments=[
             '-entity', 'shelfa_robot',
             '-file', urdf_path,
-            '-x', '0.0',
-            '-y', '0.0',
+            '-x', '2.0',
+            '-y', '-4.0',
             '-z', '0.01',  # 로봇 바퀴가 바닥에 파묻혀 튕기는(bouncing) 현상을 방지하기 위해 0에 최대한 가깝게(0.01) 설정
             '-Y', '0.0',
         ],
