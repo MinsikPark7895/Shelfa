@@ -6,7 +6,7 @@ import ReservationModal from './ReservationModal'
 import { apiFetch } from '../api'
 
 const getStorageKey = () => {
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  const user = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} } })()
   return user.id ? `shelfa-recent-searches-${user.id}` : 'shelfa-recent-searches'
 }
 interface RecentSearch { keyword: string; category: string }
@@ -36,7 +36,8 @@ function Search() {
   const myResIds = useRef<Set<string>>(new Set())
   const [gearOpenId, setGearOpenId] = useState<string | null>(null)
   const [showDevNotice, setShowDevNotice] = useState(false)
-  const isAdmin = JSON.parse(localStorage.getItem('user') || '{}').role === 'admin'
+  const [favError, setFavError] = useState(false)
+  const isAdmin = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} } })().role === 'admin'
 
   useEffect(() => {
     fetchFavorites()
@@ -49,7 +50,7 @@ function Search() {
         setSearchCategory(savedCategory)
         setLastSearchCategory(savedCategory)
         setIsSearching(true)
-        fetchBooks(savedValue)
+        fetchBooks(savedValue, savedCategory)
       }
     } else {
       sessionStorage.removeItem('search_value')
@@ -71,7 +72,7 @@ function Search() {
     if (cat) { setSearchCategory(cat); setLastSearchCategory(cat) }
     if (q) {
       setSearchValue(q); setIsSearching(true)
-      fetchBooks(q)
+      fetchBooks(q, cat || '전체')
       try {
         const current = saved ? JSON.parse(saved) : []
         const normalized: RecentSearch[] = Array.isArray(current) && current.length > 0 && typeof current[0] === 'string'
@@ -83,6 +84,7 @@ function Search() {
   }, [searchParams])
 
   const fetchFavorites = async () => {
+    setFavError(false)
     try {
       const [favRes, loanRes, resRes] = await Promise.all([
         apiFetch('/favorites/me?limit=100'),
@@ -101,12 +103,13 @@ function Search() {
         const data = await resRes.json()
         myResIds.current = new Set(data.items?.filter((r: any) => r.status === 'PENDING').map((r: any) => r.book.id) || [])
       }
-    } catch { /* */ }
+    } catch { setFavError(true) }
   }
 
-  const fetchBooks = async (keyword: string) => {
+  const fetchBooks = async (keyword: string, category?: string) => {
     sessionStorage.setItem('search_value', keyword)
-    sessionStorage.setItem('search_category', searchCategory)
+    const resolvedCategory = category ?? searchCategory
+    sessionStorage.setItem('search_category', resolvedCategory)
     try {
       const res = await apiFetch(`/books/search?query=${encodeURIComponent(keyword)}&limit=50`)
       if (!res.ok) { setSearchResults([]); return }
@@ -125,8 +128,8 @@ function Search() {
   const handleSearch = () => {
     const trimmed = searchValue.trim()
     if (!trimmed) return
-    const updated = [{ keyword: trimmed, category: searchCategory }, ...recentSearches.filter(s => !(s.keyword === trimmed && s.category === searchCategory))].slice(0, 10)
-    saveSearches(updated); setIsSearching(true); setLastSearchCategory(searchCategory); setIsFocused(false); setShowDropdown(false)
+    const updated = [{ keyword: trimmed, category: resolvedCategory }, ...recentSearches.filter(s => !(s.keyword === trimmed && s.category === searchCategory))].slice(0, 10)
+    saveSearches(updated); setIsSearching(true); setLastSearchCategory(resolvedCategory); setIsFocused(false); setShowDropdown(false)
     searchInputRef.current?.blur(); fetchBooks(trimmed)
   }
   const handleDeleteOne = (item: RecentSearch) => { saveSearches(recentSearches.filter(s => !(s.keyword === item.keyword && s.category === item.category))) }
@@ -162,7 +165,7 @@ function Search() {
       <div className="top-nav">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /><path d="M8 7h6" /><path d="M8 11h4" /></svg>
         <span className="logo-text">XYZ 도서관</span>
-        {JSON.parse(localStorage.getItem('user') || '{}').role === 'admin' && (
+        {(() => { try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} } })().role === 'admin' && (
           <button className="admin-nav-btn" onClick={() => navigate('/admin')}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
@@ -192,6 +195,9 @@ function Search() {
             </svg>
           </div>
         </div>
+        {favError && (
+          <div className="search-error-row">오류가 발생했습니다. <button className="refresh-btn" onClick={fetchFavorites}>↺</button></div>
+        )}
         {isSearching ? (
           <div className="search-result-section">
             <div className="search-result-summary">

@@ -52,7 +52,7 @@ function AdminPage() {
   const [gearOpenId, setGearOpenId] = useState<string | null>(null)
 
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem('user') || '{}')
+    const user = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} } })()
     if (user.role !== 'admin') { navigate('/home'); return }
     if (activeTab === 'users') fetchUsers()
     if (activeTab === 'books') {
@@ -72,7 +72,7 @@ function AdminPage() {
         const data = await res.json()
         setUsers(data.items || data || [])
       }
-    } catch { /* */ } finally { setLoading(false) }
+    } catch { alert('유저 목록을 불러오는 중 오류가 발생했습니다.') } finally { setLoading(false) }
   }
 
   const fetchBookList = async (query: string) => {
@@ -87,7 +87,7 @@ function AdminPage() {
         )
         setBookList(sorted)
       }
-    } catch { /* */ } finally { setBookListLoading(false) }
+    } catch { alert('도서 검색 중 오류가 발생했습니다.') } finally { setBookListLoading(false) }
   }
 
   const handleSelectType = (type: 10 | 13) => {
