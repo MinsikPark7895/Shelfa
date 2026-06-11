@@ -46,6 +46,7 @@ setup(
             "tf_book_target_to_approach = doosan_realsense_handeye.tf_book_target_to_approach:main",
             "realtime_yolo_paddle_ocr = doosan_realsense_handeye.realtime_yolo_paddle_ocr:main",
             "book_scan_after_alignment = doosan_realsense_handeye.book_scan_after_alignment:main",
+            "marker_book_pipeline = doosan_realsense_handeye.marker_book_pipeline:main",
             "book_visual_servo_align = doosan_realsense_handeye.book_visual_servo_align:main",
             "book_pick_sequence_node = doosan_realsense_handeye.book_pick_sequence_node:main",
             "controller_loader = doosan_realsense_handeye.controller_loader:main",

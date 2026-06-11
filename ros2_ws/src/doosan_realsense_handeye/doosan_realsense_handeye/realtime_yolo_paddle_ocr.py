@@ -16,6 +16,7 @@ from paddleocr import PaddleOCR
 import rclpy
 from rclpy.duration import Duration
 from rclpy.node import Node
+from rclpy.time import Time
 from geometry_msgs.msg import PointStamped, PoseStamped
 from tf2_ros import Buffer, TransformException, TransformListener
 import tf2_geometry_msgs  # noqa: F401 - PointStamped/PoseStamped TF 변환 등록용
@@ -26,7 +27,38 @@ except ImportError:
     SetPosition = None
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-MODEL_PATH = str(PACKAGE_ROOT / "runs/obb/runs/obb/book_spine_v1/weights/best.pt")
+MODEL_REL_PATH = Path("runs/obb/runs/obb/book_spine_v1/weights/best.pt")
+
+
+def resolve_model_path():
+    candidates = []
+
+    env_path = os.environ.get("BOOK_SPINE_MODEL_PATH")
+    if env_path:
+        candidates.append(Path(env_path).expanduser())
+
+    candidates.append(PACKAGE_ROOT / MODEL_REL_PATH)
+    candidates.append(Path.cwd() / MODEL_REL_PATH)
+
+    for ancestor in Path(__file__).resolve().parents:
+        candidates.append(ancestor / MODEL_REL_PATH)
+        candidates.append(ancestor / "src" / "doosan_realsense_handeye" / MODEL_REL_PATH)
+        candidates.append(ancestor / "src" / "dakae_e0509_servo" / MODEL_REL_PATH)
+
+    seen = set()
+    for candidate in candidates:
+        candidate = candidate.resolve()
+        candidate_str = str(candidate)
+        if candidate_str in seen:
+            continue
+        seen.add(candidate_str)
+        if candidate.exists():
+            return candidate_str
+
+    return str(PACKAGE_ROOT / MODEL_REL_PATH)
+
+
+MODEL_PATH = resolve_model_path()
 
 OUTPUT_DIR = "./realtime_results"
 CROP_DIR = os.path.join(OUTPUT_DIR, "crops")
@@ -928,7 +960,8 @@ class BookVisionRobotNode(Node):
             return None
 
         point = PointStamped()
-        point.header.stamp = self.get_clock().now().to_msg()
+        # 최신 TF를 사용해 미래 시점 extrapolation 오류를 피한다.
+        point.header.stamp = Time().to_msg()
         point.header.frame_id = CAMERA_FRAME
         point.point.x = float(camera_xyz_m[0])
         point.point.y = float(camera_xyz_m[1])

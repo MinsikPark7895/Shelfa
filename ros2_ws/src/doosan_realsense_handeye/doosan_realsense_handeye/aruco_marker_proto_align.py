@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import subprocess
 import threading
 import time
 from datetime import datetime
@@ -13,12 +14,24 @@ from rclpy.node import Node
 from tf2_ros import Buffer, TransformException, TransformListener
 
 
+MARKER_TARGET_PRESETS = {
+    0: [-12.5, -7.77, 91.42, -88.59, 77.57, -6.51],
+    1: [-12.5, 13.62, 127.84, -99.84, 82.24, 51.12],
+}
+MARKER_SCAN_TOOL_Y_OFFSETS_MM = {
+    0: 200.0,
+    1: 150.0,
+}
+
+
 class ArucoMarkerProtoAlign(Node):
     def __init__(self):
         super().__init__("aruco_marker_proto_align")
 
         self.declare_parameter("camera_frame", "camera_color_optical_frame")
-        self.declare_parameter("marker_frame", "aruco_marker_6")
+        self.declare_parameter("marker_frame", "aruco_marker_0")
+        self.declare_parameter("marker_frame_prefix", "aruco_marker_")
+        self.declare_parameter("target_marker_id", -1)
         self.declare_parameter("base_frame", "base_link")
         self.declare_parameter("move_joint_service", "/dsr01/motion/move_joint")
         self.declare_parameter("move_line_service", "/dsr01/motion/move_line")
@@ -33,11 +46,14 @@ class ArucoMarkerProtoAlign(Node):
         self.declare_parameter("auto_post_motion_wait_sec", 1.0)
         self.declare_parameter("auto_tf_retry_sec", 0.3)
         self.declare_parameter("auto_max_steps", 300)
+        self.declare_parameter("run_post_alignment_pipeline", True)
+        self.declare_parameter("post_alignment_target_title", "제3인류")
+        self.declare_parameter("post_alignment_no_display", True)
 
         self.declare_parameter("enable_movej", True)
         self.declare_parameter(
             "target_joint_pose_deg",
-            [45.72522, 14.837949, 112.757722, -57.964578, 124.563048, 47.803207],
+            MARKER_TARGET_PRESETS[0],
         )
         self.declare_parameter("movej_vel", 40.0)                 # 변경: 20.0 -> 40.0
         self.declare_parameter("movej_acc", 70.0)                 # 변경: 40.0 -> 70.0
@@ -80,6 +96,8 @@ class ArucoMarkerProtoAlign(Node):
 
         self.camera_frame = str(self.get_parameter("camera_frame").value)
         self.marker_frame = str(self.get_parameter("marker_frame").value)
+        self.marker_frame_prefix = str(self.get_parameter("marker_frame_prefix").value)
+        self.target_marker_id = int(self.get_parameter("target_marker_id").value)
         self.base_frame = str(self.get_parameter("base_frame").value)
         self.move_joint_service = str(self.get_parameter("move_joint_service").value)
         self.move_line_service = str(self.get_parameter("move_line_service").value)
@@ -90,7 +108,8 @@ class ArucoMarkerProtoAlign(Node):
         self.save_alignment_payload_on_done = bool(
             self.get_parameter("save_alignment_payload_on_done").value
         )
-        self.shelf_frame = str(self.get_parameter("shelf_frame").value) or self.marker_frame
+        self.shelf_frame_parameter = str(self.get_parameter("shelf_frame").value)
+        self.shelf_frame = self.shelf_frame_parameter or self.marker_frame
         self.auto_run = bool(self.get_parameter("auto_run").value)
         self.auto_step_period_sec = float(self.get_parameter("auto_step_period_sec").value)
         self.auto_post_motion_wait_sec = float(
@@ -98,6 +117,15 @@ class ArucoMarkerProtoAlign(Node):
         )
         self.auto_tf_retry_sec = float(self.get_parameter("auto_tf_retry_sec").value)
         self.auto_max_steps = int(self.get_parameter("auto_max_steps").value)
+        self.run_post_alignment_pipeline = bool(
+            self.get_parameter("run_post_alignment_pipeline").value
+        )
+        self.post_alignment_target_title = str(
+            self.get_parameter("post_alignment_target_title").value
+        )
+        self.post_alignment_no_display = bool(
+            self.get_parameter("post_alignment_no_display").value
+        )
 
         self.enable_movej = bool(self.get_parameter("enable_movej").value)
         self.target_joint_pose_deg = [
@@ -153,6 +181,7 @@ class ArucoMarkerProtoAlign(Node):
         self.recheck_rotation_after_translation = bool(
             self.get_parameter("recheck_rotation_after_translation").value
         )
+        self.supported_marker_ids = sorted(MARKER_TARGET_PRESETS)
 
         self.valid_axis_modes = {"all", "z_only", "x_only", "y_only", "xy_only", "largest"}
         self.valid_tool_axes = {"x", "y", "z"}
@@ -179,8 +208,56 @@ class ArucoMarkerProtoAlign(Node):
         self.state = "START"
         self.last_action_sent_motion = False
         self.abort_requested = False
+        self.post_alignment_pipeline_started = False
+        self.apply_initial_marker_selection()
 
         self.print_config()
+
+    def apply_initial_marker_selection(self):
+        if self.target_marker_id >= 0:
+            self.apply_marker_selection(self.target_marker_id, announce=False)
+            return
+
+        inferred_marker_id = self.parse_marker_id(self.marker_frame)
+        if inferred_marker_id in self.supported_marker_ids:
+            self.apply_marker_selection(inferred_marker_id, announce=False)
+
+    def parse_marker_id(self, value):
+        text = str(value).strip()
+        if text.isdigit():
+            return int(text)
+        if text.startswith(self.marker_frame_prefix):
+            suffix = text[len(self.marker_frame_prefix):]
+            if suffix.isdigit():
+                return int(suffix)
+        return None
+
+    def apply_marker_selection(self, marker_id, announce=True):
+        marker_id = int(marker_id)
+        if marker_id not in self.supported_marker_ids:
+            raise ValueError(
+                f"Unsupported marker id {marker_id}. Supported ids: {self.supported_marker_ids}"
+            )
+
+        self.target_marker_id = marker_id
+        self.marker_frame = f"{self.marker_frame_prefix}{marker_id}"
+        self.target_joint_pose_deg = [float(value) for value in MARKER_TARGET_PRESETS[marker_id]]
+        if not self.shelf_frame_parameter:
+            self.shelf_frame = self.marker_frame
+
+        if announce:
+            self.log_info(
+                "\n"
+                f"Selected ArUco marker id={self.target_marker_id}\n"
+                f"  marker_frame={self.marker_frame}\n"
+                f"  target_joint_pose_deg={self.target_joint_pose_deg}"
+            )
+
+    def reset_alignment_state(self, reason):
+        self.state = "START"
+        self.last_action_sent_motion = False
+        self.abort_requested = False
+        self.get_logger().warn(f"{reason} Alignment state reset to START.")
 
     def print_config(self):
         if self.auto_run:
@@ -199,6 +276,9 @@ class ArucoMarkerProtoAlign(Node):
             "\n"
             "Configuration\n"
             f"  camera_frame={self.camera_frame}, marker_frame={self.marker_frame}, "
+            f"marker_frame_prefix={self.marker_frame_prefix}, "
+            f"target_marker_id={self.target_marker_id}\n"
+            f"  supported_marker_ids={self.supported_marker_ids}, "
             f"base_frame={self.base_frame}\n"
             f"  alignment_payload_json={self.alignment_payload_json}, "
             f"save_alignment_payload_on_done={self.save_alignment_payload_on_done}\n"
@@ -209,6 +289,9 @@ class ArucoMarkerProtoAlign(Node):
             f"auto_post_motion_wait_sec={self.auto_post_motion_wait_sec:.3f}, "
             f"auto_tf_retry_sec={self.auto_tf_retry_sec:.3f}, "
             f"auto_max_steps={self.auto_max_steps}\n"
+            f"  run_post_alignment_pipeline={self.run_post_alignment_pipeline}, "
+            f"post_alignment_target_title={self.post_alignment_target_title}, "
+            f"post_alignment_no_display={self.post_alignment_no_display}\n"
             f"  enable_movej={self.enable_movej}, target_joint_pose_deg={self.target_joint_pose_deg}\n"
             f"  enable_rotation_align={self.enable_rotation_align}, "
             f"rotation_tolerance_deg={self.rotation_tolerance_deg:.3f}, "
@@ -307,6 +390,16 @@ class ArucoMarkerProtoAlign(Node):
         self.get_logger().error(f"Unknown state: {self.state}")
 
     def handle_command(self, command):
+        marker_id = self.parse_marker_id(command)
+        if marker_id is not None:
+            if marker_id not in self.supported_marker_ids:
+                self.get_logger().warn(
+                    f"Unsupported marker id {marker_id}. Supported ids: {self.supported_marker_ids}"
+                )
+                return True
+            self.apply_marker_selection(marker_id)
+            self.reset_alignment_state(f"Marker changed to id={marker_id}.")
+            return True
         if command == "next" and self.state == "ROTATION_ALIGN":
             self.get_logger().warn("Forced transition: ROTATION_ALIGN -> WAIT_AFTER_ROTATION")
             self.state = "WAIT_AFTER_ROTATION"
@@ -603,6 +696,39 @@ class ArucoMarkerProtoAlign(Node):
         self.state = "DONE"
         self.print_final_state()
         self.save_alignment_payload()
+        self.run_post_alignment_pipeline_if_needed()
+
+    def run_post_alignment_pipeline_if_needed(self):
+        if not self.run_post_alignment_pipeline:
+            return
+        if self.post_alignment_pipeline_started:
+            return
+
+        command = [
+            "ros2",
+            "run",
+            "doosan_realsense_handeye",
+            "marker_book_pipeline",
+            "--alignment-payload-json",
+            self.alignment_payload_json,
+            "--target-title",
+            self.post_alignment_target_title,
+        ]
+        if self.dry_run:
+            command.append("--dry-run")
+        if self.post_alignment_no_display:
+            command.append("--no-display")
+
+        self.post_alignment_pipeline_started = True
+        self.get_logger().warn(
+            "Starting post-alignment pipeline:\n"
+            f"  {' '.join(command)}"
+        )
+        try:
+            subprocess.run(command, check=True)
+            self.log_info("Post-alignment pipeline completed successfully.")
+        except (OSError, subprocess.CalledProcessError) as exc:
+            self.get_logger().error(f"Post-alignment pipeline failed: {exc}")
 
     def save_alignment_payload(self):
         if not self.save_alignment_payload_on_done:
@@ -639,6 +765,11 @@ class ArucoMarkerProtoAlign(Node):
             "base_frame": self.base_frame,
             "camera_frame": self.camera_frame,
             "marker_frame": self.marker_frame,
+            "target_marker_id": self.target_marker_id,
+            "scan_tool_y_offset_mm": MARKER_SCAN_TOOL_Y_OFFSETS_MM.get(
+                self.target_marker_id,
+                0.0,
+            ),
             "shelf_frame": self.shelf_frame,
             "bookshelf_front_direction_base": [
                 round(float(value), 6) for value in front_direction_base
@@ -917,7 +1048,7 @@ class ArucoMarkerProtoAlign(Node):
 
 def input_loop(node):
     print(
-        "Press Enter for one state action, q to quit, "
+        "Press Enter for one state action, 0 or 1 to select the ArUco marker, q to quit, "
         "next in ROTATION_ALIGN, rot/done in TRANSLATION_ALIGN"
     )
     while rclpy.ok():
@@ -932,7 +1063,7 @@ def input_loop(node):
             break
         if command:
             if not node.handle_command(command):
-                print("Valid commands: Enter, q, next, rot, done")
+                print("Valid commands: Enter, 0, 1, q, next, rot, done")
             continue
 
         node.handle_enter()
@@ -982,6 +1113,32 @@ def auto_loop(node):
         node.get_logger().error("Auto alignment stopped because a required service was unavailable.")
 
 
+def prompt_for_marker_selection(node):
+    if node.target_marker_id in node.supported_marker_ids:
+        return True
+
+    print(f"Select ArUco marker id to align {node.supported_marker_ids} (q to quit)")
+    while rclpy.ok():
+        try:
+            command = input("marker id> ").strip().lower()
+        except EOFError:
+            return False
+        except KeyboardInterrupt:
+            raise
+
+        if command == "q":
+            return False
+        if not command:
+            continue
+        marker_id = node.parse_marker_id(command)
+        if marker_id in node.supported_marker_ids:
+            node.apply_marker_selection(marker_id)
+            node.reset_alignment_state(f"Marker changed to id={marker_id}.")
+            node.print_config()
+            return True
+        print(f"Supported marker ids: {node.supported_marker_ids}")
+
+
 def main(args=None):
     rclpy.init(args=args)
     node = ArucoMarkerProtoAlign()
@@ -991,6 +1148,8 @@ def main(args=None):
     spin_thread.start()
 
     try:
+        if not prompt_for_marker_selection(node):
+            return
         if node.auto_run:
             auto_loop(node)
         else:

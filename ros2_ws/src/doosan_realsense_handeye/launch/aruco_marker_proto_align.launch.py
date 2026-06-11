@@ -25,7 +25,9 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument("camera_frame", default_value="camera_color_optical_frame"),
-            DeclareLaunchArgument("marker_frame", default_value="aruco_marker_6"),
+            DeclareLaunchArgument("marker_frame", default_value="aruco_marker_0"),
+            DeclareLaunchArgument("marker_frame_prefix", default_value="aruco_marker_"),
+            DeclareLaunchArgument("target_marker_id", default_value="-1"),
             DeclareLaunchArgument("move_joint_service", default_value="/dsr01/motion/move_joint"),
             DeclareLaunchArgument("move_line_service", default_value="/dsr01/motion/move_line"),
             DeclareLaunchArgument("current_posx_service", default_value="/dsr01/aux_control/get_current_posx"),
@@ -85,6 +87,8 @@ def generate_launch_description():
                 parameters=[
                     {"camera_frame": str_param("camera_frame")},
                     {"marker_frame": str_param("marker_frame")},
+                    {"marker_frame_prefix": str_param("marker_frame_prefix")},
+                    {"target_marker_id": int_param("target_marker_id")},
                     {"move_joint_service": str_param("move_joint_service")},
                     {"move_line_service": str_param("move_line_service")},
                     {"current_posx_service": str_param("current_posx_service")},
