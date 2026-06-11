@@ -12,6 +12,7 @@ source /opt/ros/humble/setup.bash
 source /home/minsik/Desktop/Shelfa/ros2_ws/install/setup.bash
 export TURTLEBOT3_MODEL=waffle_pi
 export ROS_LOCALHOST_ONLY=0
+export ROS_DOMAIN_ID=30
 
 # ==========================================
 # 1. Gazebo 실행
