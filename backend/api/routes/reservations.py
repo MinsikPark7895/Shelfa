@@ -53,6 +53,7 @@ async def create_reservation(
         mqtt_service.publish_pickup_command(
             task_id=str(new_reservation.id),
             book_id=str(book.id),
+            book_title=book.title,
             location=book.shelf_location
         )
         
