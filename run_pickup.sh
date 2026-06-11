@@ -18,7 +18,7 @@ source ~/Shelfa/ros2_ws/install/setup.bash
 
 echo "▶️ [Step 4] ArUco 기준 로봇 정렬 시작..."
 ros2 run doosan_realsense_handeye aruco_marker_proto_align --ros-args \
-  -p dry_run:=true \
+  -p dry_run:=false \
   -p auto_run:=true \
   -p target_joint_pose_deg:="[5.24, 9.99, 119.36, -86.67, 94.04, 39.46]" \
   -p target_distance_m:=0.30 \
@@ -42,7 +42,7 @@ ros2 run doosan_realsense_handeye book_scan_after_alignment -- \
 
 echo "▶️ [Step 6] 목표 책 앞으로 이동..."
 ros2 run doosan_realsense_handeye book_visual_servo_align --ros-args \
-  -p dry_run:=true \
+  -p dry_run:=false \
   -p auto_run:=true \
   -p target_lock_json:=./realtime_results/target_book_lock.json \
   -p target_distance_m:=0.0 \
@@ -61,7 +61,7 @@ ros2 run doosan_realsense_handeye book_visual_servo_align --ros-args \
 
 echo "▶️ [Step 7] 최종 책 뽑기 시퀀스 시작..."
 ros2 run doosan_realsense_handeye book_pick_sequence_node --ros-args \
-  -p dry_run:=true \
+  -p dry_run:=false \
   -p enable_gripper_control:=true \
   -p enable_place_to_box:=true \
   -p box_joint_pose_deg:="[0.0, 0.0, 90.0, 0.0, 90.0, 0.0]" \
