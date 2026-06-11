@@ -11,6 +11,7 @@ interface Notification {
   bookMeta: string
   date: string
   bookId: string
+  coverImageUrl?: string
 }
 
 const DISMISSED_KEY = 'dismissed_notifications'
@@ -18,6 +19,8 @@ const DISMISSED_KEY = 'dismissed_notifications'
 function Notifications() {
   const navigate = useNavigate()
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const [fetchError, setFetchError] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => { fetchNotifications() }, [])
 
@@ -28,6 +31,7 @@ function Notifications() {
   const fetchNotifications = async () => {
     const notifs: Notification[] = []
     const dismissed = getDismissed()
+    setFetchError(false)
 
     try {
       // 예약 중 도서 알림 (PENDING)
@@ -45,6 +49,7 @@ function Notifications() {
             bookMeta: `${r.book.author || ''} / ${r.book.publisher || ''} / ${r.book.shelf_location || ''}`,
             date: r.reserved_at?.split('T')[0]?.replace(/-/g, '.') || '',
             bookId: r.book.id,
+            coverImageUrl: r.book.cover_image_url,
           })
         }
       }
@@ -66,11 +71,13 @@ function Notifications() {
             bookMeta: `${l.book.author || ''} / ${l.book.publisher || ''} / ${l.book.shelf_location || ''}`,
             date: l.due_date?.split('T')[0]?.replace(/-/g, '.') || '',
             bookId: l.book.id,
+            coverImageUrl: l.book.cover_image_url,
           })
         }
       }
-    } catch { /* */ }
-    setNotifications(notifs)
+      setNotifications(notifs)
+    } catch { setFetchError(true) }
+    finally { setIsLoading(false) }
   }
 
   const handleDelete = (id: string) => {
@@ -94,7 +101,7 @@ function Notifications() {
           <path d="M8 7h6" /><path d="M8 11h4" />
         </svg>
         <span className="logo-text">XYZ 도서관</span>
-        {JSON.parse(localStorage.getItem('user') || '{}').role === 'admin' && (
+        {(() => { try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} } })().role === 'admin' && (
           <button className="admin-nav-btn" onClick={() => navigate('/admin')}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
@@ -106,13 +113,16 @@ function Notifications() {
       <div className="noti-content">
         <div className="noti-header">
           <h1 className="noti-title">알림</h1>
-          {notifications.length > 0 && (
-            <button className="noti-clear-btn" onClick={handleClearAll}>전체 지우기</button>
-          )}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {fetchError && <button className="refresh-btn" onClick={fetchNotifications}>↺ 새로고침</button>}
+            {notifications.length > 0 && (
+              <button className="noti-clear-btn" onClick={handleClearAll}>전체 지우기</button>
+            )}
+          </div>
         </div>
 
         {notifications.length === 0 ? (
-          <div className="noti-empty">알림이 없습니다.</div>
+          isLoading ? <div className="noti-empty">로딩 중...</div> : <div className="noti-empty">알림이 없습니다.</div>
         ) : (
           <div className="noti-list">
             {notifications.map(noti => (
@@ -133,7 +143,12 @@ function Notifications() {
                 </div>
                 <div className="noti-item-date">{noti.date}</div>
                 <div className="noti-book-card" onClick={() => { handleDelete(noti.id); if (noti.type === 'reserve') { navigate('/my-library?tab=storage') } else { navigate(`/book/${noti.bookId}`) } }}>
-                  <div className="noti-book-cover"></div>
+                  <div className="noti-book-cover">
+                    {noti.coverImageUrl
+                      ? <img src={noti.coverImageUrl} alt={noti.bookTitle} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /><path d="M8 7h6" /><path d="M8 11h4" /></svg>
+                    }
+                  </div>
                   <div className="noti-book-info">
                     <div className="noti-book-title">{noti.bookTitle}</div>
                     <div className="noti-book-meta">{noti.bookMeta}</div>

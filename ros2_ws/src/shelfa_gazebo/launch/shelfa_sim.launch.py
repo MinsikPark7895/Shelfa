@@ -10,7 +10,7 @@ def generate_launch_description():
     pkg_turtlebot3_gazebo = get_package_share_directory('turtlebot3_gazebo')
 
     # Gazebo 모델 패스 환경변수 설정
-    shelfa_dir = '/home/minsik/Desktop/Shelfa'
+    shelfa_dir = os.path.expanduser('~/Shelfa')
     gazebo_model_path = os.environ.get('GAZEBO_MODEL_PATH', '')
     if gazebo_model_path:
         gazebo_model_path += ':'
@@ -20,6 +20,7 @@ def generate_launch_description():
 
     # TurtleBot3 모델 설정
     os.environ['TURTLEBOT3_MODEL'] = 'waffle_pi'
+    os.environ['GAZEBO_MODEL_PATH'] = gazebo_model_path
 
     # 월드 파일 경로
     world_file_path = os.path.join(shelfa_dir, 'worlds', 'library_layout.world')

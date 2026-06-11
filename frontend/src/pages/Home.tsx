@@ -35,6 +35,8 @@ function Home() {
   const [reservationCount, setReservationCount] = useState(0)
   const [wishBooks, setWishBooks] = useState<BookData[]>([])
   const [selectedBook, setSelectedBook] = useState<BookData | null>(null)
+  const [summaryError, setSummaryError] = useState(false)
+  const [wishlistError, setWishlistError] = useState(false)
 
   useEffect(() => {
     const timer = setInterval(() => { setCurrentSlide(prev => (prev + 1) % 2) }, 5000)
@@ -48,6 +50,7 @@ function Home() {
 
   const fetchLibrarySummary = async () => {
     try {
+      setSummaryError(false)
       const res = await apiFetch('/users/me/summary')
       if (res.ok) {
         const data = await res.json()
@@ -59,18 +62,21 @@ function Home() {
           setNearestDday(`D-${Math.max(0, diffDays)}`)
           setNearestDueDate(`${d.getMonth() + 1}/${d.getDate()}`)
         }
+      } else {
+        setSummaryError(true)
       }
-    } catch { /* */ }
+    } catch { setSummaryError(true) }
   }
 
   const fetchWishlist = async () => {
     try {
+      setWishlistError(false)
       const [favRes, loanRes, resRes] = await Promise.all([
         apiFetch('/favorites/me?limit=5'),
         apiFetch('/loans/me?limit=50'),
         apiFetch('/reservations/me?limit=50'),
       ])
-      if (!favRes.ok) return
+      if (!favRes.ok) { setWishlistError(true); return }
       const favData = await favRes.json()
       const loanData = loanRes.ok ? await loanRes.json() : { items: [] }
       const resData = resRes.ok ? await resRes.json() : { items: [] }
@@ -86,7 +92,7 @@ function Home() {
         return { ...f.book, isAvailable: displayStatus === 'available', displayStatus }
       })
       setWishBooks(books)
-    } catch { /* */ }
+    } catch { setWishlistError(true) }
   }
 
   const handleSearchSubmit = () => {
@@ -102,7 +108,7 @@ function Home() {
           <path d="M8 7h6" /><path d="M8 11h4" />
         </svg>
         <span className="logo-text">XYZ 도서관</span>
-        {JSON.parse(localStorage.getItem('user') || '{}').role === 'admin' && (
+        {(() => { try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} } })().role === 'admin' && (
           <button className="admin-nav-btn" onClick={() => navigate('/admin')}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
@@ -170,7 +176,10 @@ function Home() {
         <div className="home-section">
           <div className="home-section-header">
             <span className="home-section-title">내 서재</span>
-            <a className="home-section-more" onClick={() => navigate('/my-library')}>더보기</a>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {summaryError && <button className="refresh-btn" onClick={fetchLibrarySummary}>↺ 새로고침</button>}
+              <a className="home-section-more" onClick={() => navigate('/my-library')}>더보기</a>
+            </div>
           </div>
           <div className="library-card">
             <div className="library-card-label">대출 중인 도서</div>
@@ -199,7 +208,10 @@ function Home() {
         <div className="home-section">
           <div className="home-section-header">
             <span className="home-section-title">위시리스트</span>
-            <a className="home-section-more" onClick={() => navigate('/my-library?tab=favorites')}>더보기</a>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {wishlistError && <button className="refresh-btn" onClick={fetchWishlist}>↺ 새로고침</button>}
+              <a className="home-section-more" onClick={() => navigate('/my-library?tab=favorites')}>더보기</a>
+            </div>
           </div>
           {wishBooks.length === 0 ? (
             <div className="wish-empty">즐겨찾기한 도서가 없습니다.</div>

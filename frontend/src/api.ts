@@ -42,6 +42,7 @@ export const apiFetch = async (path: string, options: RequestInit = {}): Promise
       localStorage.removeItem('access_token')
       localStorage.removeItem('user')
       window.location.href = '/login'
+      return res
     }
   }
 

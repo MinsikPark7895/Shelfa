@@ -19,6 +19,7 @@ function ReservationModal({ bookId, title, author, classNumber, badgeLabel, badg
   const navigate = useNavigate()
   const [step, setStep] = useState<ModalStep>('confirm')
   const [failReason, setFailReason] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
 
   const getDueDate = () => {
     const date = new Date()
@@ -27,6 +28,8 @@ function ReservationModal({ bookId, title, author, classNumber, badgeLabel, badg
   }
 
   const handleConfirm = async () => {
+    if (isLoading) return
+    setIsLoading(true)
     try {
       const res = await apiFetch(`/reservations/${bookId}`, { method: 'POST' })
 
@@ -41,6 +44,8 @@ function ReservationModal({ bookId, title, author, classNumber, badgeLabel, badg
     } catch {
       setFailReason('서버 연결에 실패했습니다.')
       setStep('fail')
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -64,7 +69,7 @@ function ReservationModal({ bookId, title, author, classNumber, badgeLabel, badg
             <div className="modal-loan-info">
               <p className="modal-loan-due">• {getDueDate()}까지 대출 가능합니다.</p>
             </div>
-            <button className="modal-reserve-btn" onClick={handleConfirm}>예약하기</button>
+            <button className="modal-reserve-btn" onClick={handleConfirm} disabled={isLoading}>{isLoading ? '처리 중...' : '예약하기'}</button>
           </>
         )}
 
