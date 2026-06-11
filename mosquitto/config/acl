@@ -1,0 +1,18 @@
+# ============================================================
+# Shelfa MQTT 권한 제어 목록 (ACL)
+# [데모/운영 모드]에서 mosquitto.conf의 보안 모드 블록을 활성화할 때 함께 사용됩니다.
+# ============================================================
+
+# 로봇 (master_node): 상태/위치 전송만 가능, 명령 수신 가능
+user robot
+topic readwrite shelfa/robot/#
+
+# 백엔드 (FastAPI): 모든 shelfa 토픽 읽기/쓰기 가능
+user backend
+topic readwrite shelfa/#
+
+# 프론트엔드: 로봇 상태 읽기 + 예약 명령 발행만 가능
+user frontend
+topic read  shelfa/robot/status
+topic read  shelfa/robot/location
+topic write shelfa/command/reservation
