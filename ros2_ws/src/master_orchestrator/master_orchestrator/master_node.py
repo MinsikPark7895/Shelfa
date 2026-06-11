@@ -174,28 +174,39 @@ class MasterOrchestratorNode(Node):
         self.get_logger().info(f"🚗 [Phase 1] {location_name} 책장 앞에 무사히 도착했습니다.")
         
         # ======================================================
-        # [Phase 2] 팀원 코드: 비전 & 로봇팔 파이프라인 쉘 스크립트 실행
+        # [Phase 2] 팀원 코드: SSH를 통해 팀원 컴퓨터에서 로봇팔 파이프라인 원격 실행
         # ======================================================
+        # ⚙️ 팀원 컴퓨터 접속 정보 (보안을 위해 환경변수 또는 .env 파일에서 불러옴)
+        TEAMMATE_PC_IP   = os.environ.get("ROBOT_ARM_PC_IP", "192.168.0.100") # 미설정 시 기본값
+        TEAMMATE_PC_USER = os.environ.get("ROBOT_ARM_PC_USER", "user")        # 미설정 시 기본값
+        REMOTE_SCRIPT    = f"/home/{TEAMMATE_PC_USER}/Shelfa/run_pickup.sh"   # 팀원 컴퓨터의 스크립트 경로
+
         book_title = book_info.get("title", "제3인류")
-        self.get_logger().info(f"🦾 [Phase 2] 로봇팔 파지 파이프라인 쉘 스크립트 실행 (목표: {book_title})...")
-        
+        self.get_logger().info(
+            f"🦾 [Phase 2] SSH로 팀원 컴퓨터({TEAMMATE_PC_IP})에 파지 명령 전송 (목표: {book_title})..."
+        )
+
         try:
             process = await asyncio.create_subprocess_exec(
-                "/bin/bash", "/home/minsik/Desktop/Shelfa/run_pickup.sh", book_title,
+                "ssh",
+                "-o", "StrictHostKeyChecking=no",   # 최초 접속 시 확인 프롬프트 스킵
+                "-o", "BatchMode=yes",               # 비밀번호 입력 프롬프트 없이 키 인증만 사용
+                f"{TEAMMATE_PC_USER}@{TEAMMATE_PC_IP}",
+                f"bash {REMOTE_SCRIPT} \"{book_title}\"",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            
+
             stdout, stderr = await process.communicate()
-            
+
             if process.returncode == 0:
                 self.get_logger().info(f"🦾 [Phase 2] 로봇팔 픽업 완벽 성공!\n{stdout.decode()}")
             else:
                 self.get_logger().error(f"❌ [Phase 2] 파지 스크립트 에러 발생:\n{stderr.decode()}")
                 return
-                
+
         except Exception as e:
-            self.get_logger().error(f"❌ [Phase 2] 파이프라인 실행 실패: {e}")
+            self.get_logger().error(f"❌ [Phase 2] SSH 원격 실행 실패: {e}")
             return
         
         # ======================================================
