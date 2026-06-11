@@ -17,9 +17,11 @@ source /opt/ros/humble/setup.bash
 source ~/Shelfa/ros2_ws/install/setup.bash
 export DISPLAY=:0
 export XAUTHORITY=/home/$USER/.Xauthority
+export ROS_DOMAIN_ID=26
 
 echo "▶️ [Step 4] ArUco 기준 로봇 정렬 시작..."
 ros2 run doosan_realsense_handeye aruco_marker_proto_align --ros-args \
+  -p marker_frame:="aruco_marker_0" \
   -p dry_run:=false \
   -p auto_run:=true \
   -p target_joint_pose_deg:="[5.24, 9.99, 119.36, -86.67, 94.04, 39.46]" \

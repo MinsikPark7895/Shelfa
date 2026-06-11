@@ -8,6 +8,7 @@ echo "========================================="
 source /opt/ros/humble/setup.bash
 source ~/Shelfa/ros2_ws/install/setup.bash
 export ROS_LOCALHOST_ONLY=0
+export ROS_DOMAIN_ID=26
 
 # ==========================================
 # 1. 두산 로봇팔 본체 + RViz 실행
@@ -33,7 +34,7 @@ sleep 5
 # 3. 리얼센스 카메라 및 ArUco 마커 인식 실행
 # ==========================================
 echo "[3/3] 📷 리얼센스 카메라 및 ArUco 인식 실행 중..."
-ros2 run doosan_realsense_handeye aruco_realsense_tf_publisher --ros-args -p target_id:=6 -p marker_length_m:=0.05 -p width:=640 -p height:=480 -p fps:=30 &
+ros2 run doosan_realsense_handeye aruco_realsense_tf_publisher --ros-args -p target_id:=0 -p marker_length_m:=0.05 -p width:=640 -p height:=480 -p fps:=30 &
 CAMERA_PID=$!
 
 echo "========================================="
