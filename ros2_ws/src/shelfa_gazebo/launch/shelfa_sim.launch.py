@@ -9,8 +9,11 @@ def generate_launch_description():
     pkg_gazebo_ros = get_package_share_directory('gazebo_ros')
     pkg_turtlebot3_gazebo = get_package_share_directory('turtlebot3_gazebo')
 
-    # Gazebo 모델 패스 환경변수 설정
-    shelfa_dir = os.path.expanduser('~/Shelfa')
+    # 팀장님 경로(~/Desktop/Shelfa)와 팀원 경로(~/Shelfa)를 모두 지원하도록 동적 설정
+    shelfa_dir = os.path.expanduser('~/Desktop/Shelfa')
+    if not os.path.exists(shelfa_dir):
+        shelfa_dir = os.path.expanduser('~/Shelfa')
+        
     gazebo_model_path = os.environ.get('GAZEBO_MODEL_PATH', '')
     if gazebo_model_path:
         gazebo_model_path += ':'
