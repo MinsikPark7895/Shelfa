@@ -14,7 +14,7 @@ echo "=============================================================="
 
 # ROS 2 환경 소싱 (백그라운드 터미널 환경이 아닐 경우를 대비)
 source /opt/ros/humble/setup.bash
-source /home/minsik/Desktop/Shelfa/ros2_ws/install/setup.bash
+source ~/Shelfa/ros2_ws/install/setup.bash
 
 echo "▶️ [Step 4] ArUco 기준 로봇 정렬 시작..."
 ros2 run doosan_realsense_handeye aruco_marker_proto_align --ros-args \
