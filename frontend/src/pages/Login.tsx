@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import '../styles/Login.css'
-import { publicFetch, apiFetch } from '../api'
+import { publicFetch } from '../api'
 
 function Login() {
   const [email, setEmail] = useState('')
