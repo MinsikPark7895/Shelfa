@@ -128,8 +128,8 @@ function Search() {
   const handleSearch = () => {
     const trimmed = searchValue.trim()
     if (!trimmed) return
-    const updated = [{ keyword: trimmed, category: resolvedCategory }, ...recentSearches.filter(s => !(s.keyword === trimmed && s.category === searchCategory))].slice(0, 10)
-    saveSearches(updated); setIsSearching(true); setLastSearchCategory(resolvedCategory); setIsFocused(false); setShowDropdown(false)
+    const updated = [{ keyword: trimmed, category: searchCategory }, ...recentSearches.filter(s => !(s.keyword === trimmed && s.category === searchCategory))].slice(0, 10)
+    saveSearches(updated); setIsSearching(true); setLastSearchCategory(searchCategory); setIsFocused(false); setShowDropdown(false)
     searchInputRef.current?.blur(); fetchBooks(trimmed)
   }
   const handleDeleteOne = (item: RecentSearch) => { saveSearches(recentSearches.filter(s => !(s.keyword === item.keyword && s.category === item.category))) }
