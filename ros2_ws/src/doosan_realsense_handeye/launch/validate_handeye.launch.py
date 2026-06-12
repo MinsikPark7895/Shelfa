@@ -7,7 +7,7 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     default_config = PathJoinSubstitution(
-        [FindPackageShare("doosan_realsense_handeye"), "config", "handeye_config.yaml"]
+        [FindPackageShare("doosan_realsense_handeye"), "config", "handeye_servo.yaml"]
     )
     return LaunchDescription(
         [
@@ -17,10 +17,8 @@ def generate_launch_description():
                 executable="validate_handeye",
                 name="validate_handeye",
                 output="screen",
-                arguments=[
-                    "--config",
-                    LaunchConfiguration("config_file"),
-                ],
+                arguments=["--config", LaunchConfiguration("config_file")],
             ),
         ]
     )
+

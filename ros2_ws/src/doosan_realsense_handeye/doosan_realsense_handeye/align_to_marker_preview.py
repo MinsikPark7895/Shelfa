@@ -10,6 +10,7 @@ from rclpy.node import Node
 from tf2_ros import Buffer, TransformBroadcaster, TransformException, TransformListener
 
 from .config_utils import node_parameters
+from .logger_utils import safe_log_info
 from .transform_utils import (
     make_transform,
     matrix_to_euler_xyz,
@@ -35,10 +36,11 @@ class AlignToMarkerPreview(Node):
             "Preview-only TCP alignment node. This node publishes TF only; it never calls "
             "Doosan motion, servo, MoveJ, MoveLine, or gripper commands."
         )
-        self.get_logger().info(
+        safe_log_info(
+            self.get_logger(),
             f"Frames: target={self.target_frame}, approach={self.approach_frame}, "
             f"tool={self.tool_frame}, goal={self.goal_frame}; "
-            f"align_axis={self.align_axis}, axis_direction={self.axis_direction}"
+            f"align_axis={self.align_axis}, axis_direction={self.axis_direction}",
         )
 
     def _declare_parameters(self):
@@ -177,7 +179,8 @@ class AlignToMarkerPreview(Node):
         xyz = t_base_goal[:3, 3]
         rpy = matrix_to_euler_xyz(t_base_goal[:3, :3])
         quaternion = matrix_to_quaternion(t_base_goal[:3, :3])
-        self.get_logger().info(
+        safe_log_info(
+            self.get_logger(),
             "\n"
             "Aligned TCP goal preview\n"
             f"  marker Z axis in {self.base_frame}: {self._format_vector(info['z_marker_base'])}\n"
@@ -191,7 +194,7 @@ class AlignToMarkerPreview(Node):
             f"  {self.goal_frame} rpy [deg]: "
             f"{math.degrees(rpy[0]):.3f}, {math.degrees(rpy[1]):.3f}, "
             f"{math.degrees(rpy[2]):.3f}\n"
-            f"  {self.goal_frame} quaternion xyzw: {self._format_vector(quaternion)}"
+            f"  {self.goal_frame} quaternion xyzw: {self._format_vector(quaternion)}",
         )
 
     @staticmethod
@@ -244,3 +247,4 @@ def main(args=None):
 
 if __name__ == "__main__":
     main()
+

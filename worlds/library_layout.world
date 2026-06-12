@@ -40,7 +40,7 @@
       <uri>model://Bookshelf_with_Book10</uri>
       <static>true</static>
       <!-- 좌측 왼쪽 라인, 세로(Y축 방향)로 세움 -->
-      <pose>-0.5 1.5 0 0 0 1.5708</pose>
+      <pose>-0.45 2.4 0 0 0 -1.5708</pose>
     </include>
 
     <include>
@@ -48,7 +48,7 @@
       <uri>model://Bookshelf_with_Book10</uri>
       <static>true</static>
       <!-- 좌측 오른쪽 라인 -->
-      <pose>0.5 1.5 0 0 0 1.5708</pose>
+      <pose>0.45 1.7 0 0 0 1.5708</pose>
     </include>
 
     <!-- 중앙 책장 그룹 (도면 중앙의 두 세로 책장) -->
@@ -56,22 +56,29 @@
       <name>bookshelf_center_a</name>
       <uri>model://Bookshelf_with_Book10</uri>
       <static>true</static>
-      <pose>4.0 1.5 0 0 0 1.5708</pose>
+      <pose>3.05 2.4 0 0 0 -1.5708</pose>
     </include>
 
     <include>
       <name>bookshelf_center_b</name>
       <uri>model://Bookshelf_with_Book10</uri>
       <static>true</static>
-      <pose>5.0 1.5 0 0 0 1.5708</pose>
+      <pose>3.95 1.7 0 0 0 1.5708</pose>
     </include>
 
-    <!-- 우측 책장 그룹 (도면 우측의 한 세로 책장) -->
+    <!-- 우측 책장 그룹 -->
     <include>
-      <name>bookshelf_right</name>
+      <name>bookshelf_right_a</name>
       <uri>model://Bookshelf_with_Book10</uri>
       <static>true</static>
-      <pose>9.0 1.5 0 0 0 1.5708</pose>
+      <pose>6.55 2.4 0 0 0 -1.5708</pose>
+    </include>
+
+    <include>
+      <name>bookshelf_right_b</name>
+      <uri>model://Bookshelf_with_Book10</uri>
+      <static>true</static>
+      <pose>7.45 1.7 0 0 0 1.5708</pose>
     </include>
 
     <!-- ============================================================
@@ -260,18 +267,34 @@
       </link>
     </model>
 
-    <!-- 장벽 C: (-10, -5) → (0, -5), 가로 10m, y=-5 선상 -->
-    <model name="barrier_c">
+    <!-- 장벽 C: (-10, -5) → (0, -5), x=-7.5~-6.5 구간 1m 홀 -->
+    <model name="barrier_c_left">
       <static>true</static>
-      <pose>-5.0 -5.0 0 0 0 0</pose>
+      <pose>-8.75 -5.0 0 0 0 0</pose>
       <link name="wall">
         <pose>0 0 0.375 0 0 0</pose>
         <visual name="vis">
-          <geometry><box><size>10.0 0.1 0.75</size></box></geometry>
+          <geometry><box><size>2.5 0.1 0.75</size></box></geometry>
           <material><script><name>Gazebo/Brown</name></script></material>
         </visual>
         <collision name="col">
-          <geometry><box><size>10.0 0.1 0.75</size></box></geometry>
+          <geometry><box><size>2.5 0.1 0.75</size></box></geometry>
+        </collision>
+      </link>
+    </model>
+
+    <!-- 장벽 C 오른쪽: x=-6.5 → x=0 -->
+    <model name="barrier_c_right">
+      <static>true</static>
+      <pose>-3.25 -5.0 0 0 0 0</pose>
+      <link name="wall">
+        <pose>0 0 0.375 0 0 0</pose>
+        <visual name="vis">
+          <geometry><box><size>6.5 0.1 0.75</size></box></geometry>
+          <material><script><name>Gazebo/Brown</name></script></material>
+        </visual>
+        <collision name="col">
+          <geometry><box><size>6.5 0.1 0.75</size></box></geometry>
         </collision>
       </link>
     </model>
@@ -302,23 +325,27 @@
       <pose>0 0 0 0 0 0</pose>
 
       <link name="shelf_left_a_block">
-        <pose>-0.5 1.5 0.5 0 0 0</pose>
+        <pose>-0.45 2.4 0.5 0 0 0</pose>
         <collision name="col"><geometry><box><size>0.5 1.0 1.0</size></box></geometry></collision>
       </link>
       <link name="shelf_left_b_block">
-        <pose>0.5 1.5 0.5 0 0 0</pose>
+        <pose>0.45 1.7 0.5 0 0 0</pose>
         <collision name="col"><geometry><box><size>0.5 1.0 1.0</size></box></geometry></collision>
       </link>
       <link name="shelf_center_a_block">
-        <pose>4.0 1.5 0.5 0 0 0</pose>
+        <pose>3.05 2.4 0.5 0 0 0</pose>
         <collision name="col"><geometry><box><size>0.5 1.0 1.0</size></box></geometry></collision>
       </link>
       <link name="shelf_center_b_block">
-        <pose>5.0 1.5 0.5 0 0 0</pose>
+        <pose>3.95 1.7 0.5 0 0 0</pose>
         <collision name="col"><geometry><box><size>0.5 1.0 1.0</size></box></geometry></collision>
       </link>
-      <link name="shelf_right_block">
-        <pose>9.0 1.5 0.5 0 0 0</pose>
+      <link name="shelf_right_a_block">
+        <pose>6.55 2.4 0.5 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.5 1.0 1.0</size></box></geometry></collision>
+      </link>
+      <link name="shelf_right_b_block">
+        <pose>7.45 1.7 0.5 0 0 0</pose>
         <collision name="col"><geometry><box><size>0.5 1.0 1.0</size></box></geometry></collision>
       </link>
     </model>

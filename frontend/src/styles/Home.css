@@ -432,3 +432,15 @@
 .admin-nav-btn:active {
   color: var(--navy);
 }
+
+.refresh-btn {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: #888;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.refresh-btn:active {
+  color: var(--navy);
+}
