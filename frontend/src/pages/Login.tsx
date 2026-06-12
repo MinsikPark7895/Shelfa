@@ -40,16 +40,16 @@ function Login() {
 
       const data = await res.json()
       if (saveId) { localStorage.setItem('saved_email', email) } else { localStorage.removeItem('saved_email') }
-      localStorage.setItem('access_token', data.access_token)
-
-      // 내 정보 조회 후 저장
-      const meRes = await apiFetch('/users/me')
+// 내 정보 조회 후 토큰 저장
+      const meRes = await publicFetch('/users/me', {
+        headers: { 'Authorization': `Bearer ${data.access_token}` }
+      })
       if (!meRes.ok) {
-        localStorage.removeItem('access_token')
         alert('서버 오류가 발생했습니다. 다시 시도해주세요.')
         return
       }
       const user = await meRes.json()
+      localStorage.setItem('access_token', data.access_token)
       localStorage.setItem('user', JSON.stringify(user))
       sessionStorage.clear()
       navigate('/home')

@@ -302,3 +302,14 @@
   height: auto;
   border-radius: 8px;
 }
+.refresh-btn {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: #888;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.refresh-btn:active {
+  color: var(--navy);
+}

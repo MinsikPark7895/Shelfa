@@ -26,7 +26,7 @@ class MQTTService:
         except Exception as e:
             print(f"❌ MQTT 연결 실패: {e}")
 
-    def publish_pickup_command(self, task_id: str, book_id: str, location: str):
+    def publish_pickup_command(self, task_id: str, book_id: str, book_title: str, location: str):
         """
         로봇 마스터 오케스트라 노드에게 책 픽업 명령을 발행합니다.
         
@@ -38,6 +38,7 @@ class MQTTService:
             "command": "PICKUP",
             "target_book": {
                 "book_id": book_id,
+                "title": book_title,
                 "location_name": location  # DB의 shelf_location 값 (예: "ZONE_1")
             }
         }
