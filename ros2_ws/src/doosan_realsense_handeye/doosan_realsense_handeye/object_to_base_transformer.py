@@ -9,11 +9,8 @@ from rclpy.node import Node
 from tf2_ros import Buffer, TransformException, TransformListener
 
 from .config_utils import default_config_path, node_parameters
-from .transform_utils import (
-    matrix_from_yaml_dict,
-    transform_point,
-    transform_stamped_to_matrix,
-)
+from .logger_utils import safe_log_info
+from .transform_utils import matrix_from_yaml_dict, transform_point, transform_stamped_to_matrix
 
 
 def load_tool_camera(path):
@@ -49,13 +46,15 @@ class ObjectToBaseTransformer(Node):
         t_base_tool = transform_stamped_to_matrix(tf)
         t_base_camera = t_base_tool @ self.t_tool_camera
         point_base = transform_point(t_base_camera, self.point)
-        self.get_logger().info(
+        safe_log_info(
+            self.get_logger(),
             "P_camera [m]: "
-            f"{self.point[0]:.6f}, {self.point[1]:.6f}, {self.point[2]:.6f}"
+            f"{self.point[0]:.6f}, {self.point[1]:.6f}, {self.point[2]:.6f}",
         )
-        self.get_logger().info(
+        safe_log_info(
+            self.get_logger(),
             "P_base [m]: "
-            f"{point_base[0]:.6f}, {point_base[1]:.6f}, {point_base[2]:.6f}"
+            f"{point_base[0]:.6f}, {point_base[1]:.6f}, {point_base[2]:.6f}",
         )
         return point_base
 
@@ -75,7 +74,7 @@ def parse_args(args=None):
         "--calibration-result",
         default=defaults.get(
             "calibration_result_path",
-            "/home/dakae/ros2_ws/src/doosan_realsense_handeye/data/calibration_result/T_tool_camera.yaml",
+            "/home/user/Shelfa/ros2_ws/src/doosan_realsense_handeye/data/calibration_result/T_tool_camera.yaml",
         ),
     )
     parser.add_argument("--base-frame", default=defaults.get("base_frame", "base_link"))
@@ -121,3 +120,4 @@ def main(args=None):
 
 if __name__ == "__main__":
     main()
+

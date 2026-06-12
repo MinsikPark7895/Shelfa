@@ -627,3 +627,10 @@ AMENT_IGNORE
 .vscode/mosquitto/config/passwd
 mosquitto/config/passwd
 .vscode/
+realtime_results/
+ros2_ws/frames_*.gv
+ros2_ws/frames_*.pdf
+
+# Ignore tf2_tools frames output everywhere
+frames_*.gv
+frames_*.pdf

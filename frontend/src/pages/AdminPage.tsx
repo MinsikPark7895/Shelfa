@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import '../styles/AdminPage.css'
 import { apiFetch } from '../api'
+import LiveMap from '../components/LiveMap'
 
 interface UserItem {
   id: string
@@ -360,7 +361,7 @@ function AdminPage() {
 
         {activeTab === 'robot' && (
           <div className="admin-tab-content">
-            <div className="admin-empty">API 및 DB 연동 내용</div>
+            <LiveMap />
           </div>
         )}
       </div>

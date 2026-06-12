@@ -209,3 +209,4 @@ def camera_info_to_matrices(camera_info_msg):
     camera_matrix = np.asarray(camera_info_msg.k, dtype=float).reshape(3, 3)
     dist_coeffs = np.asarray(camera_info_msg.d, dtype=float).reshape(-1, 1)
     return camera_matrix, dist_coeffs
+

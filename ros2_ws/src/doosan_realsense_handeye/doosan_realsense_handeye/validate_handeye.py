@@ -79,14 +79,14 @@ def parse_args(args=None):
         "--samples",
         default=defaults.get(
             "sample_save_path",
-            "/home/dakae/ros2_ws/src/doosan_realsense_handeye/data/samples/handeye_samples.yaml",
+            "/home/user/Shelfa/ros2_ws/src/doosan_realsense_handeye/data/samples/handeye_samples.yaml",
         ),
     )
     parser.add_argument(
         "--calibration-result",
         default=defaults.get(
             "calibration_result_path",
-            "/home/dakae/ros2_ws/src/doosan_realsense_handeye/data/calibration_result/T_tool_camera.yaml",
+            "/home/user/Shelfa/ros2_ws/src/doosan_realsense_handeye/data/calibration_result/T_tool_camera.yaml",
         ),
     )
     parsed = parser.parse_args(args)
@@ -115,3 +115,4 @@ def main(args=None):
 
 if __name__ == "__main__":
     main()
+

@@ -17,10 +17,10 @@ import math
 
 # 구역별 목적지 및 홈 위치 좌표 (새 SLAM 지도 기준 - Publish Point로 직접 측정)
 SEMANTIC_MAP = {
-    "ZONE_1": {"x": 3.900, "y": -1.240, "yaw": 0.0},
-    "ZONE_2": {"x": 2.298, "y": 0.377,  "yaw": 0.0},
-    "ZONE_3": {"x": 6.274, "y": 2.474,  "yaw": 0.0},
-    "HOME":   {"x": 2.0, "y": -4.0, "yaw": 0.0}
+    "ZONE_1": {"x": 0.400,  "y": 2.500,  "yaw": 0.0},
+    "ZONE_2": {"x": 4.000,  "y": 3.000,  "yaw": 0.0},
+    "ZONE_3": {"x": -3.000, "y": 4.000,  "yaw": 0.0},
+    "HOME":   {"x": 6.700,  "y": -1.700, "yaw": 0.0}
 }
 
 def euler_to_quaternion(yaw):
@@ -69,6 +69,36 @@ class MasterOrchestratorNode(Node):
         # 백그라운드 태스크로 서비스 호출을 스케줄링
         asyncio.run_coroutine_threadsafe(self.call_set_initial_pose(), self.loop)
 
+        # 4. 실시간 위치 전송용 Subscriber
+        self.pose_sub = self.create_subscription(
+            PoseWithCovarianceStamped,
+            '/amcl_pose',
+            self.amcl_pose_callback,
+            10
+        )
+        self.last_pose_publish_time = 0.0
+
+    def amcl_pose_callback(self, msg):
+        import time
+        current_time = time.time()
+        # 0.5초(2Hz)에 한 번씩만 전송하여 네트워크 부하 방지
+        if current_time - self.last_pose_publish_time > 0.5:
+            self.last_pose_publish_time = current_time
+            x = msg.pose.pose.position.x
+            y = msg.pose.pose.position.y
+            q = msg.pose.pose.orientation
+            
+            # Quaternion to yaw 변환
+            siny_cosp = 2 * (q.w * q.z + q.x * q.y)
+            cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
+            yaw = math.atan2(siny_cosp, cosy_cosp)
+            
+            payload = json.dumps({"x": x, "y": y, "yaw": math.degrees(yaw)})
+            try:
+                self.mqtt_client.publish('shelfa/robot/pose', payload)
+            except Exception:
+                pass
+
     async def call_set_initial_pose(self):
         self.get_logger().info("⏳ AMCL 초기화 서비스(/set_initial_pose) 대기 중...")
         while not self.initial_pose_client.wait_for_service(timeout_sec=1.0):
@@ -78,8 +108,8 @@ class MasterOrchestratorNode(Node):
         req.pose.header.frame_id = 'map'
         # 파이썬 get_clock()은 동기식이므로 asyncio 환경에서 주의해서 사용해야 하나, 이 노드에서는 가능
         req.pose.header.stamp = self.get_clock().now().to_msg()
-        req.pose.pose.pose.position.x = 2.0
-        req.pose.pose.pose.position.y = -4.0
+        req.pose.pose.pose.position.x = 0.0
+        req.pose.pose.pose.position.y = 0.0
         req.pose.pose.pose.position.z = 0.01
         req.pose.pose.pose.orientation = euler_to_quaternion(0.0)
         
@@ -174,12 +204,40 @@ class MasterOrchestratorNode(Node):
         self.get_logger().info(f"🚗 [Phase 1] {location_name} 책장 앞에 무사히 도착했습니다.")
         
         # ======================================================
-        # [Phase 2] 팀원 코드: 비전 & 로봇팔 제어 (현재는 대기 시뮬레이션)
+        # [Phase 2] 팀원 코드: SSH를 통해 팀원 컴퓨터에서 로봇팔 파이프라인 원격 실행
         # ======================================================
-        self.get_logger().info(f"🦾 [Phase 2] 동료의 비전 및 E0509 로봇팔 제어 시작 대기...")
-        # TODO: 추후 여기에 팀원의 ROS 2 서비스/액션 호출 코드가 들어갑니다.
-        await asyncio.sleep(5.0) 
-        self.get_logger().info(f"🦾 [Phase 2] (가상) 비전 인식 및 로봇팔 픽업 완료!")
+        # ⚙️ 팀원 컴퓨터 접속 정보 (보안을 위해 환경변수 또는 .env 파일에서 불러옴)
+        TEAMMATE_PC_IP   = os.environ.get("ROBOT_ARM_PC_IP", "192.168.0.100") # 미설정 시 기본값
+        TEAMMATE_PC_USER = os.environ.get("ROBOT_ARM_PC_USER", "user")        # 미설정 시 기본값
+        REMOTE_SCRIPT    = f"/home/{TEAMMATE_PC_USER}/Shelfa/run_pickup.sh"   # 팀원 컴퓨터의 스크립트 경로
+
+        book_title = book_info.get("title", "제3인류")
+        self.get_logger().info(
+            f"🦾 [Phase 2] SSH로 팀원 컴퓨터({TEAMMATE_PC_IP})에 파지 명령 전송 (목표: {book_title})..."
+        )
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "ssh",
+                "-o", "StrictHostKeyChecking=no",   # 최초 접속 시 확인 프롬프트 스킵
+                "-o", "BatchMode=yes",               # 비밀번호 입력 프롬프트 없이 키 인증만 사용
+                f"{TEAMMATE_PC_USER}@{TEAMMATE_PC_IP}",
+                f"bash {REMOTE_SCRIPT} \"{book_title}\"",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+
+            stdout, stderr = await process.communicate()
+
+            if process.returncode == 0:
+                self.get_logger().info(f"🦾 [Phase 2] 로봇팔 픽업 완벽 성공!\n{stdout.decode()}")
+            else:
+                self.get_logger().error(f"❌ [Phase 2] 파지 스크립트 에러 발생:\n{stderr.decode()}")
+                return
+
+        except Exception as e:
+            self.get_logger().error(f"❌ [Phase 2] SSH 원격 실행 실패: {e}")
+            return
         
         # ======================================================
         # [Phase 3] 책장 구역 -> 다시 대기 위치(HOME)로 복귀
