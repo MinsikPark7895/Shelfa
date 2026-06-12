@@ -10,7 +10,7 @@ interface FavItem { id: string; book: BookData; displayStatus: string }
 interface ReservationItem { id: string; book: BookData; reserved_at: string; status: string }
 
 function MyLibrary() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'loans')
   const navigate = useNavigate()
   const [loanItems, setLoanItems] = useState<LoanItem[]>([])
@@ -137,9 +137,9 @@ function MyLibrary() {
       <div className="mylibrary-content">
         <h1 className="mylibrary-title">내 서재</h1>
         <div className="tab-group">
-          <button className={`tab-btn ${activeTab === 'loans' ? 'active' : ''}`} onClick={() => setActiveTab('loans')}>대출현황</button>
-          <button className={`tab-btn ${activeTab === 'favorites' ? 'active' : ''}`} onClick={() => setActiveTab('favorites')}>관심도서</button>
-          <button className={`tab-btn ${activeTab === 'storage' ? 'active' : ''}`} onClick={() => setActiveTab('storage')}>보관도서</button>
+          <button className={`tab-btn ${activeTab === 'loans' ? 'active' : ''}`} onClick={() => { setActiveTab('loans'); setSearchParams({ tab: 'loans' }) }}>대출현황</button>
+          <button className={`tab-btn ${activeTab === 'favorites' ? 'active' : ''}`} onClick={() => { setActiveTab('favorites'); setSearchParams({ tab: 'favorites' }) }}>관심도서</button>
+          <button className={`tab-btn ${activeTab === 'storage' ? 'active' : ''}`} onClick={() => { setActiveTab('storage'); setSearchParams({ tab: 'storage' }) }}>보관도서</button>
         </div>
 
         {activeTab === 'loans' && (<div className="tab-content">

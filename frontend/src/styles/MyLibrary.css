@@ -150,6 +150,7 @@
 
 .book-card-info {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -375,6 +376,12 @@
   gap: 10px;
   background: #F8F9FA;
   width: 40%;
+}
+
+@media (max-width: 480px) {
+  .book-card-storage-box {
+    width: 90%;
+  }
 }
 
 .book-card-storage-section {
