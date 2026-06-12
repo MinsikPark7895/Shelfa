@@ -11,10 +11,6 @@ function MyPage() {
 
   const user = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} } })()
 
-  useEffect(() => {
-    fetchSummary()
-  }, [])
-
   const fetchSummary = async () => {
     try {
       setSummaryError(false)
@@ -28,6 +24,9 @@ function MyPage() {
       }
     } catch { setSummaryError(true) }
   }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { fetchSummary() }, [])
 
   const handleLogout = async () => {
     try {

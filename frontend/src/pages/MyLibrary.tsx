@@ -9,6 +9,9 @@ interface LoanItem { id: string; book: BookData; due_date: string; borrowed_at: 
 interface FavItem { id: string; book: BookData; displayStatus: string }
 interface ReservationItem { id: string; book: BookData; reserved_at: string; status: string }
 
+const isOverdue = (d: string) => Math.ceil((new Date(d).getTime() - Date.now()) / 86400000) <= 3
+const isPastDue = (d: string) => new Date(d).getTime() < Date.now()
+
 function MyLibrary() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'loans')
@@ -21,10 +24,6 @@ function MyLibrary() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [selectedBook, setSelectedBook] = useState<BookData | null>(null)
 
-  useEffect(() => { if (activeTab === 'loans') fetchLoans() }, [activeTab])
-  useEffect(() => { if (activeTab === 'favorites') fetchFavorites() }, [activeTab])
-  useEffect(() => { if (activeTab === 'storage') fetchStorage() }, [activeTab])
-
   const fetchLoans = async () => {
     try {
       const res = await apiFetch('/loans/me?limit=50')
@@ -36,7 +35,7 @@ function MyLibrary() {
       const favRes = await apiFetch('/favorites/me?limit=100')
       if (favRes.ok) {
         const favData = await favRes.json()
-        setFavBookIds(new Set(favData.items?.map((f: any) => f.book.id) || []))
+        setFavBookIds(new Set(favData.items?.map((f: { book: { id: string } }) => f.book.id) || []))
       }
     } catch { alert('데이터를 불러오는 중 오류가 발생했습니다.') }
   }
@@ -52,10 +51,10 @@ function MyLibrary() {
       const loanData = loanRes.ok ? await loanRes.json() : { items: [] }
       const resData = resRes.ok ? await resRes.json() : { items: [] }
 
-      const myLoanIds = new Set(loanData.items?.map((l: any) => l.book.id) || [])
-      const myResIds = new Set(resData.items?.filter((r: any) => r.status === 'PENDING').map((r: any) => r.book.id) || [])
+      const myLoanIds = new Set(loanData.items?.map((l: LoanItem) => l.book.id) || [])
+      const myResIds = new Set(resData.items?.filter((r: ReservationItem) => r.status === 'PENDING').map((r: ReservationItem) => r.book.id) || [])
 
-      const items: FavItem[] = (favData.items || []).map((f: any) => {
+      const items: FavItem[] = (favData.items || []).map((f: { id: string; book: BookData }) => {
         let displayStatus = 'available'
         if (myLoanIds.has(f.book.id)) displayStatus = 'my_loan'
         else if (myResIds.has(f.book.id)) displayStatus = 'my_reservation'
@@ -63,7 +62,7 @@ function MyLibrary() {
         return { ...f, displayStatus }
       })
       setFavoriteItems(items)
-      setFavBookIds(new Set(favData.items?.map((f: any) => f.book.id) || []))
+      setFavBookIds(new Set(favData.items?.map((f: { book: { id: string } }) => f.book.id) || []))
     } catch { alert('데이터를 불러오는 중 오류가 발생했습니다.') }
   }
 
@@ -72,10 +71,17 @@ function MyLibrary() {
       const res = await apiFetch('/reservations/me?limit=50')
       if (res.ok) {
         const data = await res.json()
-        setStorageItems(data.items?.filter((r: any) => r.status === 'PENDING') || [])
+        setStorageItems(data.items?.filter((r: ReservationItem) => r.status === 'PENDING') || [])
       }
     } catch { alert('데이터를 불러오는 중 오류가 발생했습니다.') }
   }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { if (activeTab === 'loans') fetchLoans() }, [activeTab])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { if (activeTab === 'favorites') fetchFavorites() }, [activeTab])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { if (activeTab === 'storage') fetchStorage() }, [activeTab])
 
   const handleToggleFavorite = async (bookId: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -118,9 +124,6 @@ function MyLibrary() {
     const kst = new Date(dt.getTime() + (9 * 60 * 60 * 1000) + (1 * 60 * 60 * 1000))
     return `${kst.getHours()}:${String(kst.getMinutes()).padStart(2, '0')}`
   }
-  const isOverdue = (d: string) => Math.ceil((new Date(d).getTime() - Date.now()) / 86400000) <= 3
-  const isPastDue = (d: string) => new Date(d).getTime() < Date.now()
-
   return (
     <div className="page-container">
       <div className="top-nav">

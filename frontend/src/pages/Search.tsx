@@ -21,13 +21,43 @@ function Search() {
   const [searchParams] = useSearchParams()
   const navigationType = useNavigationType()
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const [searchValue, setSearchValue] = useState('')
-  const [isSearching, setIsSearching] = useState(false)
+  const [searchValue, setSearchValue] = useState(() => {
+    const q = searchParams.get('q')
+    if (q) return q
+    if (navigationType === 'POP') return sessionStorage.getItem('search_value') || ''
+    return ''
+  })
+  const [isSearching, setIsSearching] = useState(() => {
+    if (searchParams.get('q')) return true
+    if (navigationType === 'POP') return Boolean(sessionStorage.getItem('search_value'))
+    return false
+  })
   const [isFocused, setIsFocused] = useState(false)
-  const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([])
-  const [searchCategory, setSearchCategory] = useState('전체')
+  const [recentSearches, setRecentSearches] = useState<RecentSearch[]>(() => {
+    try {
+      const saved = localStorage.getItem(getStorageKey())
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return typeof parsed[0] === 'string' ? parsed.map((s: string) => ({ keyword: s, category: '전체' })) : parsed
+        }
+      }
+    } catch { /* */ }
+    return []
+  })
+  const [searchCategory, setSearchCategory] = useState(() => {
+    const cat = searchParams.get('cat')
+    if (cat) return cat
+    if (navigationType === 'POP') return sessionStorage.getItem('search_category') || '전체'
+    return '전체'
+  })
   const [showDropdown, setShowDropdown] = useState(false)
-  const [lastSearchCategory, setLastSearchCategory] = useState('전체')
+  const [lastSearchCategory, setLastSearchCategory] = useState(() => {
+    const cat = searchParams.get('cat')
+    if (cat) return cat
+    if (navigationType === 'POP') return sessionStorage.getItem('search_category') || '전체'
+    return '전체'
+  })
   const [searchResults, setSearchResults] = useState<BookResult[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [favoriteBookIds, setFavoriteBookIds] = useState<Set<string>>(new Set())
@@ -39,50 +69,6 @@ function Search() {
   const [favError, setFavError] = useState(false)
   const isAdmin = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} } })().role === 'admin'
 
-  useEffect(() => {
-    fetchFavorites()
-    // 뒤로가기일 때만 검색 상태 복원
-    if (navigationType === 'POP') {
-      const savedValue = sessionStorage.getItem('search_value')
-      const savedCategory = sessionStorage.getItem('search_category') || '전체'
-      if (savedValue && !searchParams.get('q')) {
-        setSearchValue(savedValue)
-        setSearchCategory(savedCategory)
-        setLastSearchCategory(savedCategory)
-        setIsSearching(true)
-        fetchBooks(savedValue, savedCategory)
-      }
-    } else {
-      sessionStorage.removeItem('search_value')
-      sessionStorage.removeItem('search_category')
-    }
-    let saved: string | null = null
-    try {
-      saved = localStorage.getItem(getStorageKey())
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          if (typeof parsed[0] === 'string') setRecentSearches(parsed.map((s: string) => ({ keyword: s, category: '전체' })))
-          else setRecentSearches(parsed)
-        }
-      }
-    } catch { localStorage.removeItem(getStorageKey()) }
-    const q = searchParams.get('q')
-    const cat = searchParams.get('cat')
-    if (cat) { setSearchCategory(cat); setLastSearchCategory(cat) }
-    if (q) {
-      setSearchValue(q); setIsSearching(true)
-      fetchBooks(q, cat || '전체')
-      try {
-        const current = saved ? JSON.parse(saved) : []
-        const normalized: RecentSearch[] = Array.isArray(current) && current.length > 0 && typeof current[0] === 'string'
-          ? current.map((s: string) => ({ keyword: s, category: '전체' })) : current
-        const updated = [{ keyword: q, category: cat || '전체' }, ...normalized.filter((s: RecentSearch) => !(s.keyword === q && s.category === (cat || '전체')))].slice(0, 10)
-        saveSearches(updated)
-      } catch { saveSearches([{ keyword: q, category: cat || '전체' }]) }
-    }
-  }, [searchParams])
-
   const fetchFavorites = async () => {
     setFavError(false)
     try {
@@ -93,15 +79,15 @@ function Search() {
       ])
       if (favRes.ok) {
         const data = await favRes.json()
-        setFavoriteBookIds(new Set(data.items?.map((f: any) => f.book.id) || []))
+        setFavoriteBookIds(new Set(data.items?.map((f: { book: { id: string } }) => f.book.id) || []))
       }
       if (loanRes.ok) {
         const data = await loanRes.json()
-        myLoanIds.current = new Set(data.items?.map((l: any) => l.book.id) || [])
+        myLoanIds.current = new Set(data.items?.map((l: { book: { id: string } }) => l.book.id) || [])
       }
       if (resRes.ok) {
         const data = await resRes.json()
-        myResIds.current = new Set(data.items?.filter((r: any) => r.status === 'PENDING').map((r: any) => r.book.id) || [])
+        myResIds.current = new Set(data.items?.filter((r: { status: string; book: { id: string } }) => r.status === 'PENDING').map((r: { status: string; book: { id: string } }) => r.book.id) || [])
       }
     } catch { setFavError(true) }
   }
@@ -114,7 +100,7 @@ function Search() {
       const res = await apiFetch(`/books/search?query=${encodeURIComponent(keyword)}&limit=50`)
       if (!res.ok) { setSearchResults([]); return }
       const data = await res.json()
-      const items = (data.items || []).map((book: any) => {
+      const items = (data.items || []).map((book: BookResult) => {
         let displayStatus = book.status === 'AVAILABLE' ? 'available' : 'borrowed'
         if (myLoanIds.current.has(book.id)) displayStatus = 'my_loan'
         else if (myResIds.current.has(book.id)) displayStatus = 'my_reservation'
@@ -159,6 +145,32 @@ function Search() {
     const map: Record<string, string> = { '전체': '전체', '저자': '작가', '출판사': '출판사', '분류': '분류' }
     return map[cat] || cat
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchFavorites()
+    if (navigationType !== 'POP') {
+      sessionStorage.removeItem('search_value')
+      sessionStorage.removeItem('search_category')
+    }
+    const q = searchParams.get('q')
+    const cat = searchParams.get('cat')
+    if (q) {
+      fetchBooks(q, cat || '전체')
+      try {
+        const current = localStorage.getItem(getStorageKey())
+        const parsed = current ? JSON.parse(current) : []
+        const normalized: RecentSearch[] = Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string'
+          ? parsed.map((s: string) => ({ keyword: s, category: '전체' })) : parsed
+        const updated = [{ keyword: q, category: cat || '전체' }, ...normalized.filter((s: RecentSearch) => !(s.keyword === q && s.category === (cat || '전체')))].slice(0, 10)
+        saveSearches(updated)
+      } catch { saveSearches([{ keyword: q, category: cat || '전체' }]) }
+    } else if (navigationType === 'POP') {
+      const savedValue = sessionStorage.getItem('search_value')
+      const savedCategory = sessionStorage.getItem('search_category') || '전체'
+      if (savedValue) fetchBooks(savedValue, savedCategory)
+    }
+  }, [searchParams])
 
   return (
     <div className="page-container">
