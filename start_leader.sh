@@ -14,6 +14,11 @@ export TURTLEBOT3_MODEL=waffle_pi
 export ROS_LOCALHOST_ONLY=0
 export ROS_DOMAIN_ID=30
 
+# .env 환경 변수 불러오기 (MQTT 접속 및 암호)
+if [ -f /home/minsik/Desktop/Shelfa/.env ]; then
+  export $(grep -v '^#' /home/minsik/Desktop/Shelfa/.env | xargs)
+fi
+
 # ==========================================
 # 1. Gazebo 실행
 # ==========================================
