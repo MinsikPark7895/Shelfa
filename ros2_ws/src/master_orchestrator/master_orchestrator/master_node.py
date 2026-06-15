@@ -69,6 +69,36 @@ class MasterOrchestratorNode(Node):
         # 백그라운드 태스크로 서비스 호출을 스케줄링
         asyncio.run_coroutine_threadsafe(self.call_set_initial_pose(), self.loop)
 
+        # 4. 실시간 위치 전송용 Subscriber
+        self.pose_sub = self.create_subscription(
+            PoseWithCovarianceStamped,
+            '/amcl_pose',
+            self.amcl_pose_callback,
+            10
+        )
+        self.last_pose_publish_time = 0.0
+
+    def amcl_pose_callback(self, msg):
+        import time
+        current_time = time.time()
+        # 0.5초(2Hz)에 한 번씩만 전송하여 네트워크 부하 방지
+        if current_time - self.last_pose_publish_time > 0.5:
+            self.last_pose_publish_time = current_time
+            x = msg.pose.pose.position.x
+            y = msg.pose.pose.position.y
+            q = msg.pose.pose.orientation
+            
+            # Quaternion to yaw 변환
+            siny_cosp = 2 * (q.w * q.z + q.x * q.y)
+            cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
+            yaw = math.atan2(siny_cosp, cosy_cosp)
+            
+            payload = json.dumps({"x": x, "y": y, "yaw": math.degrees(yaw)})
+            try:
+                self.mqtt_client.publish('shelfa/robot/pose', payload)
+            except Exception:
+                pass
+
     async def call_set_initial_pose(self):
         self.get_logger().info("⏳ AMCL 초기화 서비스(/set_initial_pose) 대기 중...")
         while not self.initial_pose_client.wait_for_service(timeout_sec=1.0):
