@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from db.database import get_db
+from api.deps import get_db
 from api.services.llm_service import get_ai_response
 from api.deps import get_current_user, limiter
 from db.models import User
@@ -9,11 +9,15 @@ from fastapi import Request
 
 router = APIRouter()
 
+from typing import Optional
+
 class ChatRequest(BaseModel):
     message: str
 
 class ChatResponse(BaseModel):
     reply: str
+    recommended_book_id: Optional[str] = None
+    recommended_book_title: Optional[str] = None
 
 @router.post("/", response_model=ChatResponse)
 @limiter.limit("5/minute")
@@ -32,5 +36,9 @@ def chat_with_librarian(
     if not chat_request.message or not chat_request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
         
-    reply_text = get_ai_response(chat_request.message, db)
-    return ChatResponse(reply=reply_text)
+    ai_data = get_ai_response(chat_request.message, db)
+    return ChatResponse(
+        reply=ai_data.get("reply", "죄송합니다. 오류가 발생했습니다."),
+        recommended_book_id=ai_data.get("recommended_book_id"),
+        recommended_book_title=ai_data.get("recommended_book_title")
+    )
