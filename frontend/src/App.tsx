@@ -10,6 +10,7 @@ import Notifications from './pages/Notifications'
 import Search from './pages/Search'
 import BookDetail from './pages/BookDetail'
 import AdminPage from './pages/AdminPage'
+import ChatWidget from './components/ChatWidget'
 import './App.css'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -34,6 +35,7 @@ function App() {
         <Route path="/book/:id" element={<PrivateRoute><BookDetail /></PrivateRoute>} />
         <Route path="/admin" element={<PrivateRoute><AdminPage /></PrivateRoute>} />
       </Routes>
+      <ChatWidget />
     </BrowserRouter>
   )
 }

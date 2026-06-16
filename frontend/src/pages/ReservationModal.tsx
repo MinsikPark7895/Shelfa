@@ -81,6 +81,7 @@ function ReservationModal({ bookId, title, author, classNumber, badgeLabel, badg
               </svg>
             </div>
             <p className="modal-result-text">예약이 완료되었습니다.</p>
+            <p style={{ fontSize: '13px', color: '#666', margin: '4px 0 12px', textAlign: 'center' }}>🤖 로봇이 도서를 보관함으로 가져오는 중입니다.</p>
             <div className="modal-result-buttons">
               <button className="modal-btn-outline" onClick={() => { onClose(); navigate('/search') }}>계속 예약하기</button>
               <button className="modal-btn-outline" onClick={() => navigate('/my-library')}>내 서재로</button>

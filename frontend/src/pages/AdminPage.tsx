@@ -60,7 +60,7 @@ function AdminPage() {
         const data = await res.json()
         setUsers(data.items || data || [])
       }
-    } catch { alert('유저 목록을 불러오는 중 오류가 발생했습니다.') } finally { setLoading(false) }
+    } catch { /* */ } finally { setLoading(false) }
   }
 
   const fetchBookList = async (query: string) => {
