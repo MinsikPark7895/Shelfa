@@ -1,5 +1,51 @@
 # doosan_realsense_handeye Codex Worklog
 
+## 2026-06-12 - Book Mission State Machine
+
+### Request
+
+Build a single mission state machine for the full flow:
+home -> marker alignment -> book detection -> book offset move -> pick -> place -> home.
+
+### Changes
+
+- Added `book_mission_state_machine.py` as a top-level orchestrator.
+- Reused the existing ArUco alignment subprocess, book scan helpers, and pick sequence executor
+  instead of reimplementing the lower-level robot/service logic.
+- Added `config/book_mission_state_machine.yaml` and
+  `launch/book_mission_state_machine.launch.py`.
+- Added mission trace/result JSON outputs for step-by-step debugging.
+
+### Safety Notes
+
+- Mission defaults remain dry-run oriented.
+- The state machine does not own the RealSense device; it subscribes to the external ROS camera
+  topics already used by the book scan flow.
+
+## 2026-06-12 - Subscriber-based RealSense Book Scan
+
+### Request
+
+Switch the Doosan book-scan flow from direct RealSense device ownership to subscriber-based
+camera input, with the external `realsense2_camera` node publishing image topics first.
+
+### Changes
+
+- Reworked `realtime_yolo_paddle_ocr.py` to read `color/image_raw`, `color/camera_info`, and
+  aligned depth images from ROS topics instead of opening `pyrealsense2` directly.
+- Kept the legacy helper API shape so older book-vision scripts can still call the shared entry
+  points without owning the camera device.
+- Updated `book_scan_after_alignment.py` to wait on subscribed frames after the alignment pose is
+  reached.
+- Updated `README.md` to document the external RealSense launch requirement and the expected image
+  topics.
+
+### Safety Notes
+
+- No robot motion command was executed.
+- No gripper command was executed.
+- The change is limited to the `doosan_realsense_handeye` package.
+
 ## 2026-06-08 - Doosan RealSense Hand-Eye Calibration Package
 
 ### Request

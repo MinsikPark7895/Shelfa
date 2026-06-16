@@ -10,6 +10,7 @@ ArUco 정렬 완료 payload를 받아 책 탐색까지만 수행하는 파이프
 import argparse
 import difflib
 import json
+import math
 import os
 import re
 import time
@@ -20,6 +21,7 @@ from typing import Any, Dict, List
 
 import cv2
 import numpy as np
+from dsr_msgs2.srv import MoveLine
 from geometry_msgs.msg import Pose
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -51,6 +53,11 @@ DEFAULT_ALIGNMENT_PAYLOAD_PATH = os.path.join(
 DEFAULT_TARGET_TITLE = "제3인류"
 BOOK_SCAN_MARKER_TOPIC = "/book_scan_markers"
 BOOK_SCAN_BACKOFF_M = 0.20
+BOOK_SCAN_DOWN_OFFSET_M = 0.15
+MARKER_SCAN_TOOL_Y_OFFSETS_MM = {
+    0: 200.0,
+    1: 150.0,
+}
 MOCK_ALIGNMENT_BASE_FRAME = "base_link"
 MOCK_ALIGNMENT_CAMERA_FRAME = "camera_color_optical_frame"
 MOCK_ALIGNMENT_SHELF_FRAME = "bookshelf_frame"
@@ -60,6 +67,7 @@ MOCK_ALIGNMENT_TCP_POSE = [500.0, 0.0, 400.0, 180.0, 0.0, 90.0]
 SCAN_STATES = [
     "WAIT_ALIGNMENT_DONE",
     "MAKE_BOOK_SCAN_POSE",
+    "MOVE_TO_BOOK_SCAN_POSE",
     "CAPTURE_FRAME",
     "DETECT_BOOKS",
     "OCR_TITLES",
@@ -186,6 +194,22 @@ def parse_args():
         default=False,
         help="title_partial_match도 글로벌 OCR 조기 종료 이유에 포함합니다.",
     )
+    parser.add_argument(
+        "--move-line-service",
+        default="/dsr01/motion/move_line",
+        help="OCR 전에 book_scan_pose로 이동할 MoveLine 서비스입니다.",
+    )
+    parser.add_argument("--scan-move-vel-linear", type=float, default=20.0)
+    parser.add_argument("--scan-move-vel-angular", type=float, default=10.0)
+    parser.add_argument("--scan-move-acc-linear", type=float, default=40.0)
+    parser.add_argument("--scan-move-acc-angular", type=float, default=20.0)
+    parser.add_argument("--scan-move-settle-sec", type=float, default=1.0)
+    parser.add_argument("--scan-move-timeout-sec", type=float, default=30.0)
+    parser.add_argument(
+        "--skip-scan-move",
+        action="store_true",
+        help="book_scan_pose 이동을 건너뛰고 현재 자세에서 OCR을 실행합니다.",
+    )
     return parser.parse_args()
 
 
@@ -305,6 +329,57 @@ def parse_aligned_tcp_pose_to_posx_mm(aligned_tcp_pose):
     raise ValueError("dict pose must contain posx_mm/posx or position_m + rpy_deg")
 
 
+def extract_target_marker_id(alignment_payload):
+    for key in ("target_marker_id", "marker_id"):
+        value = alignment_payload.get(key)
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+
+    marker_frame = str(alignment_payload.get("marker_frame") or "")
+    if marker_frame.startswith("aruco_marker_"):
+        suffix = marker_frame[len("aruco_marker_"):]
+        if suffix.isdigit():
+            return int(suffix)
+    return None
+
+
+def euler_xyz_deg_to_matrix(rx_deg, ry_deg, rz_deg):
+    rx = math.radians(float(rx_deg))
+    ry = math.radians(float(ry_deg))
+    rz = math.radians(float(rz_deg))
+    cx, sx = math.cos(rx), math.sin(rx)
+    cy, sy = math.cos(ry), math.sin(ry)
+    cz, sz = math.cos(rz), math.sin(rz)
+
+    rx_matrix = np.array(
+        [[1.0, 0.0, 0.0], [0.0, cx, -sx], [0.0, sx, cx]],
+        dtype=np.float64,
+    )
+    ry_matrix = np.array(
+        [[cy, 0.0, sy], [0.0, 1.0, 0.0], [-sy, 0.0, cy]],
+        dtype=np.float64,
+    )
+    rz_matrix = np.array(
+        [[cz, -sz, 0.0], [sz, cz, 0.0], [0.0, 0.0, 1.0]],
+        dtype=np.float64,
+    )
+    return rz_matrix @ ry_matrix @ rx_matrix
+
+
+def compute_tool_y_offset_mm(posx_mm_deg, offset_mm):
+    offset_mm = float(offset_mm)
+    if abs(offset_mm) < 1e-9:
+        return np.zeros(3, dtype=np.float64)
+
+    rotation = euler_xyz_deg_to_matrix(posx_mm_deg[3], posx_mm_deg[4], posx_mm_deg[5])
+    tool_y_axis_base = rotation[:, 1]
+    return tool_y_axis_base * offset_mm
+
+
 def compute_book_scan_pose(alignment_payload):
     aligned_posx = parse_aligned_tcp_pose_to_posx_mm(
         alignment_payload["aligned_tcp_pose"]
@@ -322,14 +397,93 @@ def compute_book_scan_pose(alignment_payload):
     scan_posx[0] += float(front[0]) * BOOK_SCAN_BACKOFF_M * 1000.0
     scan_posx[1] += float(front[1]) * BOOK_SCAN_BACKOFF_M * 1000.0
     scan_posx[2] += float(front[2]) * BOOK_SCAN_BACKOFF_M * 1000.0
+    marker_id = extract_target_marker_id(alignment_payload)
+    scan_tool_y_offset_mm = float(
+        alignment_payload.get(
+            "scan_tool_y_offset_mm",
+            MARKER_SCAN_TOOL_Y_OFFSETS_MM.get(marker_id, 0.0),
+        )
+    )
+    tool_y_offset_mm = compute_tool_y_offset_mm(aligned_posx, scan_tool_y_offset_mm)
+    scan_posx[0] += float(tool_y_offset_mm[0])
+    scan_posx[1] += float(tool_y_offset_mm[1])
+    scan_posx[2] += float(tool_y_offset_mm[2])
+    scan_posx[2] -= BOOK_SCAN_DOWN_OFFSET_M * 1000.0
 
     return {
         "frame_id": alignment_payload["base_frame"],
-        "description": "aligned_tcp_pose + bookshelf_front_direction_base * 0.20m",
+        "description": (
+            "aligned_tcp_pose + bookshelf_front_direction_base * 0.20m "
+            "+ tool_y_offset + z_down_offset"
+        ),
+        "target_marker_id": marker_id,
         "backoff_m": BOOK_SCAN_BACKOFF_M,
+        "down_offset_m": BOOK_SCAN_DOWN_OFFSET_M,
+        "scan_tool_y_offset_mm": scan_tool_y_offset_mm,
+        "tool_y_offset_base_mm": [round(float(v), 3) for v in tool_y_offset_mm],
         "bookshelf_front_direction_base": [round(float(v), 6) for v in front],
         "posx_mm_deg": [round(float(v), 3) for v in scan_posx],
     }
+
+
+def move_robot_to_book_scan_pose(
+    robot_node,
+    book_scan_pose,
+    move_line_service,
+    vel_linear,
+    vel_angular,
+    acc_linear,
+    acc_angular,
+    timeout_sec,
+):
+    request = MoveLine.Request()
+    request.pos = [float(v) for v in book_scan_pose["posx_mm_deg"]]
+    request.vel = [float(vel_linear), float(vel_angular)]
+    request.acc = [float(acc_linear), float(acc_angular)]
+    request.time = 0.0
+    request.radius = 0.0
+    request.ref = 0
+    request.mode = 0
+    request.blend_type = 0
+    request.sync_type = 0
+
+    print("[BookScanMove]")
+    print(
+        json.dumps(
+            {
+                "service": move_line_service,
+                "posx_mm_deg": [float(v) for v in request.pos],
+                "vel": [float(v) for v in request.vel],
+                "acc": [float(v) for v in request.acc],
+                "timeout_sec": float(timeout_sec),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+
+    client = robot_node.create_client(MoveLine, move_line_service)
+    if not client.wait_for_service(timeout_sec=1.0):
+        raise RuntimeError(f"Service not available: {move_line_service}")
+
+    future = client.call_async(request)
+    start_time = time.monotonic()
+    while vision.rclpy.ok() and not future.done():
+        if time.monotonic() - start_time > float(timeout_sec):
+            raise RuntimeError(
+                f"{move_line_service} timed out after {float(timeout_sec):.1f} sec"
+            )
+        vision.rclpy.spin_once(robot_node, timeout_sec=0.05)
+
+    if future.result() is None:
+        raise RuntimeError(f"{move_line_service} failed: {future.exception()}")
+
+    response = future.result()
+    if not bool(getattr(response, "success", False)):
+        raise RuntimeError(f"{move_line_service} returned success=false")
+
+    print("[BookScanMove] success")
+    return True
 
 
 def make_ocr_debug_path(timestamp, book_index, suffix):
@@ -1605,6 +1759,20 @@ def main():
         result["book_scan_pose"] = book_scan_pose
         print("[BookScanPose]")
         print(json.dumps(book_scan_pose, ensure_ascii=False, indent=2))
+        if not args.skip_scan_move:
+            set_state(result, "MOVE_TO_BOOK_SCAN_POSE")
+            move_robot_to_book_scan_pose(
+                robot_node,
+                book_scan_pose,
+                args.move_line_service,
+                args.scan_move_vel_linear,
+                args.scan_move_vel_angular,
+                args.scan_move_acc_linear,
+                args.scan_move_acc_angular,
+                args.scan_move_timeout_sec,
+            )
+            if args.scan_move_settle_sec > 0.0:
+                time.sleep(float(args.scan_move_settle_sec))
 
         print("YOLO OBB 모델 로드 중...")
         yolo_model = vision.YOLO(vision.MODEL_PATH)
@@ -1632,6 +1800,7 @@ def main():
         frame = None
         depth_frame = None
         for _ in range(10):
+            vision.rclpy.spin_once(pipeline, timeout_sec=0.0)
             frame, depth_frame, _ = vision.get_realsense_frames(pipeline, align)
             if frame is not None and depth_frame is not None:
                 break
@@ -1725,6 +1894,7 @@ def main():
     finally:
         if pipeline is not None:
             pipeline.stop()
+            pipeline.destroy_node()
         cv2.destroyAllWindows()
         if robot_node is not None:
             robot_node.destroy_node()
