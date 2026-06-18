@@ -692,15 +692,15 @@ START
 -> ALIGN_MARKER
 -> DETECT_BOOK
 -> PREPARE_GRIPPER_PICK_OPEN
--> MOVE_TO_BOOK_20CM_OFFSET
+-> MOVE_TO_BOOK_35CM_OFFSET
 -> LOWER_CAMERA_FOR_VERIFY
 -> VERIFY_BOOK_AGAIN
 -> ALIGN_BOOK_LATERAL
 -> MOVE_LEFT_1CM
 -> SET_GRIPPER_600_AFTER_ALIGN
 -> EXPERIMENTAL_PICK_CYCLES
--> PICK_BOOK
 -> MOVE_TO_PLACE_POSE
+-> LOWER_TO_PLACE_BOOK
 -> RELEASE_BOOK
 -> RETURN_HOME
 -> DONE
@@ -733,6 +733,218 @@ Override the designated place pose as needed:
 ```bash
 ros2 run doosan_realsense_handeye book_mission_state_machine --ros-args \
   -p place_joint_pose_deg:="[10.0, 0.0, 90.0, 0.0, 90.0, 0.0]"
+```
+
+## Current Full Pick Then Marker2 Place Demo
+
+This is the current detect-and-pick demo route for the Doosan E0509,
+RealSense, RH-P12 gripper, ArUco marker 0 bookshelf alignment, and ArUco
+marker 2 placement target.
+
+All commands below assume this workspace layout:
+
+```bash
+cd /home/user/Shelfa/ros2_ws
+source /opt/ros/humble/setup.bash
+source /home/user/Shelfa/ros2_ws/install/setup.bash
+source /home/user/Shelfa/ros2_ws/src/doosan_realsense_handeye/_external_clones/Shelfa-detect-and-pick/ros2_ws/install/setup.bash
+export ROS_LOG_DIR=/tmp
+```
+
+Start the required runtime nodes in separate terminals.
+
+### 1. Gripper Service
+
+```bash
+ros2 launch dsr_gripper_tcp gripper_service_node.launch.py
+```
+
+### 2. RealSense Camera
+
+```bash
+ros2 launch realsense2_camera rs_launch.py \
+  enable_color:=true \
+  enable_depth:=true \
+  align_depth.enable:=true \
+  publish_tf:=true \
+  rgb_camera.color_profile:=1280x720x30 \
+  depth_module.depth_profile:=1280x720x30
+```
+
+### 3. Hand-Eye Static TF
+
+```bash
+ros2 run tf2_ros static_transform_publisher \
+  -0.01151140132331922 \
+  -0.04068446401037196 \
+  0.06598386871074707 \
+  -0.0004988115704339 \
+  0.01053595856067635 \
+  0.9999443259620144 \
+  -0.0002995673497136527 \
+  link_6 \
+  camera_color_optical_frame
+```
+
+### 4. ArUco Marker 0 TF Publisher
+
+Marker 0 is used for bookshelf alignment and first book picking.
+
+```bash
+ros2 run doosan_realsense_handeye simple_aruco_marker_tf_publisher \
+  --ros-args \
+  -p marker_id:=0 \
+  -p marker_length_m:=0.05 \
+  -p child_frame:=aruco_marker_0 \
+  -p parent_frame:=camera_color_optical_frame \
+  -p image_topic:=/camera/camera/color/image_raw \
+  -p camera_info_topic:=/camera/camera/color/camera_info
+```
+
+### 5. ArUco Marker 2 TF Publisher
+
+Marker 2 is used for the second placement target.
+
+```bash
+ros2 run doosan_realsense_handeye simple_aruco_marker2_tf_publisher \
+  --ros-args \
+  -p marker_id:=2 \
+  -p marker_length_m:=0.05 \
+  -p child_frame:=aruco_marker_2 \
+  -p parent_frame:=camera_color_optical_frame \
+  -p image_topic:=/camera/camera/color/image_raw \
+  -p camera_info_topic:=/camera/camera/color/camera_info
+```
+
+### 6. Full Demo Runner
+
+The full runner performs first bookshelf pick/place, waits for Enter, then
+performs marker2 placement.
+
+```bash
+ros2 run doosan_realsense_handeye full_pick_then_marker2_place_sequence \
+  --ros-args \
+  -p dry_run:=false
+```
+
+The current runner uses manual stepping. Major movement states wait for Enter;
+enter `q` at prompts that support it to abort.
+
+### First Mission: Bookshelf Pick And Home Placement
+
+```text
+ALIGN_MARKER
+  Align to ArUco marker 0. Marker alignment is manual-step mode.
+
+DETECT_BOOK
+  Move to the book scan pose from the alignment payload.
+  Detect books with YOLO, run OCR, match target_title="제3인류".
+  Print selected book pixels, camera_xyz_m, and base_xyz_m.
+
+PREPARE_GRIPPER_PICK_OPEN
+  Open the gripper before approaching the selected book.
+
+MOVE_TO_BOOK_35CM_OFFSET
+  Move along tool Z toward the selected book.
+  Target distance is 0.35 m from the selected book depth.
+  Current TCP pose and selected book base coordinates are logged before motion.
+
+LOWER_CAMERA_FOR_VERIFY
+  Move along tool Y by 70 mm for the second OCR verification pose.
+
+VERIFY_BOOK_AGAIN
+  Re-run YOLO/OCR at the current pose and confirm the selected book.
+
+ALIGN_BOOK_LATERAL
+  Laterally align to the verified book using image-space error.
+
+MOVE_LEFT_1CM
+  Apply the final lateral offset before gripping.
+
+SET_GRIPPER_600_AFTER_ALIGN
+  Set the gripper to position 600.
+
+EXPERIMENTAL_PICK_CYCLES
+  Push/pull by 70 mm while soft gripping/opening.
+  Final grip uses position 660.
+  Pull the book out by 400 mm along tool Z.
+
+MOVE_TO_PLACE_POSE
+  Move to the home/place joint pose [0, 0, 90, 0, 90, 0].
+
+LOWER_TO_PLACE_BOOK
+  Lower along tool Z+ by 170 mm before opening the gripper.
+
+RELEASE_BOOK
+  Open the gripper and place the book at the home/place pose.
+
+RETURN_HOME
+  Return to [0, 0, 90, 0, 90, 0].
+```
+
+After the first mission completes, the runner waits:
+
+```text
+First book-pick mission completed. Press Enter to start marker2 place mission...
+```
+
+### Second Mission: Re-Grip And Marker2 Placement
+
+```text
+RUN_MARKER2_ALIGN
+  Align to ArUco marker 2 in manual-step mode.
+  Save the aligned TCP pose at marker2 target distance 0.50 m.
+
+MOVEJ_BOX_HOME
+  Move to [0, 0, 90, 0, 90, 0].
+
+OPEN_GRIPPER_FOR_REGRIP
+  Open the gripper to position 500.
+
+DESCEND_TO_BOX_BOOK
+  Move tool Z+ by 200 mm to re-grip the book placed by the first mission.
+
+CLOSE_GRIPPER_ON_BOX_BOOK
+  Close the gripper to position 660.
+
+LIFT_FROM_BOX
+  Move tool Z- by 200 mm.
+
+MOVE_TO_SAVED_MARKER2_TCP_POSE
+  Move directly to the saved marker2-aligned TCP pose.
+
+PRE_INSERT_FROM_SAVED_Z_100
+  Move tool Z+ by 100 mm.
+
+DROP_FROM_SAVED_Y_150
+  Move tool Y+ by 150 mm.
+
+INSERT_REMAINING_FROM_SAVED_Z
+  Move tool Z+ by the remaining 300 mm.
+
+OPEN_GRIPPER_PLACE_BOOK
+  Open the gripper to position 500 and place the book.
+
+RETREAT_REMAINING_FROM_SAVED_Z
+  Move tool Z- by 300 mm.
+
+RAISE_FROM_SAVED_Y_150
+  Move tool Y- by 150 mm.
+
+RETREAT_PRE_INSERT_FROM_SAVED_Z_100
+  Move tool Z- by 100 mm.
+
+MOVEJ_BOX_HOME_RETURN
+  Return to [0, 0, 90, 0, 90, 0].
+```
+
+To test only the second mission:
+
+```bash
+ros2 run doosan_realsense_handeye box_regrip_marker2_place_sequence \
+  --ros-args \
+  -p dry_run:=false \
+  -p require_enter:=true
 ```
 
 ## Reference Only: Book Visual Servo Align

@@ -428,8 +428,7 @@ class ArucoMarkerProtoAlign(Node):
             )
             return
         if self.state == "DONE":
-            self.print_final_state()
-            self.save_alignment_payload()
+            self.log_info("Alignment is already DONE. Press q or Enter at the prompt to exit.")
             return
 
         self.get_logger().error(f"Unknown state: {self.state}")
@@ -1107,6 +1106,9 @@ def input_loop(node):
             if not node.handle_command(command):
                 print("Valid commands: Enter, 0, 1, q, next, rot, done")
             continue
+
+        if node.state == "DONE":
+            break
 
         node.handle_enter()
 
