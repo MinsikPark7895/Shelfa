@@ -56,7 +56,7 @@ MISSION_STATES = [
     "ALIGN_MARKER",
     "DETECT_BOOK",
     "PREPARE_GRIPPER_PICK_OPEN",
-    "MOVE_TO_BOOK_20CM_OFFSET",
+    "MOVE_TO_BOOK_35CM_OFFSET",
     "LOWER_CAMERA_FOR_VERIFY",
     "VERIFY_BOOK_AGAIN",
     "ALIGN_BOOK_LATERAL",
@@ -65,6 +65,7 @@ MISSION_STATES = [
     "EXPERIMENTAL_PICK_CYCLES",
     "PICK_BOOK",
     "MOVE_TO_PLACE_POSE",
+    "LOWER_TO_PLACE_BOOK",
     "RELEASE_BOOK",
     "RETURN_HOME",
     "DONE",
@@ -129,6 +130,7 @@ class BookMissionStateMachine(Node):
             "verified_book_scan_result": None,
             "selected_book_candidate": None,
             "verified_selected_book_candidate": None,
+            "selected_book_pose_debug": None,
             "book_pre_approach_result": None,
             "book_pre_verify_lower_result": None,
             "book_lateral_align_result": None,
@@ -136,6 +138,7 @@ class BookMissionStateMachine(Node):
             "gripper_after_lateral_result": None,
             "experimental_pick_cycles_result": None,
             "pick_result": None,
+            "place_lower_result": None,
             "place_result": None,
             "home_result": None,
         }
@@ -162,6 +165,8 @@ class BookMissionStateMachine(Node):
         self.declare_parameter("target_title", "제3인류")
         self.declare_parameter("use_ocr_title_match", True)
         self.declare_parameter("allow_fallback_lock", True)
+        self.declare_parameter("allow_initial_vision_only_selection", True)
+        self.declare_parameter("allow_bottom_depth_fallback", True)
         self.declare_parameter("book_index", -1)
         self.declare_parameter("lock_book_index", -1)
         self.declare_parameter("no_display", True)
@@ -190,7 +195,7 @@ class BookMissionStateMachine(Node):
         self.declare_parameter("skip_scan_move", False)
         self.declare_parameter("require_depth_for_scan", True)
 
-        self.declare_parameter("book_pre_approach_target_distance_m", 0.20)
+        self.declare_parameter("book_pre_approach_target_distance_m", 0.35)
         self.declare_parameter("book_pre_approach_max_step_m", 0.35)
         self.declare_parameter("book_pre_approach_axis", "z")
         self.declare_parameter("book_pre_approach_axis_sign", 1.0)
@@ -201,6 +206,8 @@ class BookMissionStateMachine(Node):
         self.declare_parameter("book_pre_approach_settle_sec", 0.7)
         self.declare_parameter("book_pre_verify_lower_enabled", True)
         self.declare_parameter("book_pre_verify_lower_z_mm", 70.0)
+        self.declare_parameter("book_pre_verify_lower_axis", "y")
+        self.declare_parameter("book_pre_verify_lower_axis_sign", 1.0)
         self.declare_parameter("book_lateral_align_enabled", True)
         self.declare_parameter("book_lateral_target_pixel_x", -1.0)
         self.declare_parameter("book_lateral_pixel_tolerance_px", 12.0)
@@ -225,6 +232,8 @@ class BookMissionStateMachine(Node):
         self.declare_parameter("experimental_pick_final_grip_position", 660)
         self.declare_parameter("experimental_pick_final_pull_mm", 400.0)
         self.declare_parameter("stop_after_experimental_pick_cycles", True)
+        self.declare_parameter("place_after_experimental_pick_cycles", False)
+        self.declare_parameter("place_lower_before_release_mm", 170.0)
         self.declare_parameter("stop_after_gripper_after_lateral", False)
         self.declare_parameter("stop_after_book_verify_again", False)
 
@@ -305,6 +314,12 @@ class BookMissionStateMachine(Node):
         self.target_title = str(self.get_parameter("target_title").value)
         self.use_ocr_title_match = bool(self.get_parameter("use_ocr_title_match").value)
         self.allow_fallback_lock = bool(self.get_parameter("allow_fallback_lock").value)
+        self.allow_initial_vision_only_selection = bool(
+            self.get_parameter("allow_initial_vision_only_selection").value
+        )
+        self.allow_bottom_depth_fallback = bool(
+            self.get_parameter("allow_bottom_depth_fallback").value
+        )
         self.book_index = int(self.get_parameter("book_index").value)
         self.lock_book_index = int(self.get_parameter("lock_book_index").value)
         self.no_display = bool(self.get_parameter("no_display").value)
@@ -367,6 +382,12 @@ class BookMissionStateMachine(Node):
         )
         self.book_pre_verify_lower_z_mm = float(
             self.get_parameter("book_pre_verify_lower_z_mm").value
+        )
+        self.book_pre_verify_lower_axis = str(
+            self.get_parameter("book_pre_verify_lower_axis").value
+        ).lower()
+        self.book_pre_verify_lower_axis_sign = float(
+            self.get_parameter("book_pre_verify_lower_axis_sign").value
         )
         self.book_lateral_align_enabled = bool(
             self.get_parameter("book_lateral_align_enabled").value
@@ -439,6 +460,12 @@ class BookMissionStateMachine(Node):
         )
         self.stop_after_experimental_pick_cycles = bool(
             self.get_parameter("stop_after_experimental_pick_cycles").value
+        )
+        self.place_after_experimental_pick_cycles = bool(
+            self.get_parameter("place_after_experimental_pick_cycles").value
+        )
+        self.place_lower_before_release_mm = float(
+            self.get_parameter("place_lower_before_release_mm").value
         )
         self.stop_after_gripper_after_lateral = bool(
             self.get_parameter("stop_after_gripper_after_lateral").value
@@ -570,6 +597,8 @@ class BookMissionStateMachine(Node):
             raise ValueError("place_joint_pose_deg must contain exactly 6 joint values")
         if self.book_pre_approach_axis not in ("x", "y", "z"):
             raise ValueError("book_pre_approach_axis must be one of x, y, z")
+        if self.book_pre_verify_lower_axis not in ("x", "y", "z"):
+            raise ValueError("book_pre_verify_lower_axis must be one of x, y, z")
         if self.book_lateral_axis not in ("x", "y", "z"):
             raise ValueError("book_lateral_axis must be one of x, y, z")
         if self.book_left_shift_axis not in ("x", "y", "z"):
@@ -704,6 +733,7 @@ class BookMissionStateMachine(Node):
         request.sync_type = 0
         if self.dry_run:
             return True
+        self.log_current_tcp_pose("BEFORE_MOVE_HOME")
         return self.call_service(
             self.move_joint_client,
             self.move_joint_service,
@@ -723,6 +753,7 @@ class BookMissionStateMachine(Node):
         request.sync_type = 0
         if self.dry_run:
             return True
+        self.log_current_tcp_pose("BEFORE_MOVE_TO_PLACE_POSE")
         return self.call_service(
             self.move_joint_client,
             self.move_joint_service,
@@ -757,6 +788,62 @@ class BookMissionStateMachine(Node):
         if not all(map(lambda value: float(value) == float(value), current)):
             return None
         return [float(value) for value in current]
+
+    @staticmethod
+    def format_vector(values, precision=4):
+        if values is None:
+            return "None"
+        try:
+            return "[" + ", ".join(f"{float(value):.{precision}f}" for value in values) + "]"
+        except (TypeError, ValueError):
+            return str(values)
+
+    def selected_book_pose_debug(self, selected_book):
+        if selected_book is None:
+            return None
+        return {
+            "book_index": int(selected_book.get("book_index", -1)),
+            "pixels": selected_book.get("pixels"),
+            "camera_xyz_m": selected_book.get("camera_xyz_m"),
+            "base_xyz_m": selected_book.get("base_xyz_m"),
+            "depth_valid": selected_book.get("depth_valid"),
+        }
+
+    def log_selected_book_pose(self, label, selected_book):
+        debug = self.selected_book_pose_debug(selected_book)
+        if debug is None:
+            self.log_info(f"\n[{label}] selected book pose: None")
+            return None
+
+        camera_xyz = debug.get("camera_xyz_m") or {}
+        base_xyz = debug.get("base_xyz_m") or {}
+        pixels = debug.get("pixels") or {}
+        self.log_info(
+            "\n"
+            f"[{label}] selected book pose\n"
+            f"  book_index={debug['book_index']}\n"
+            f"  pixels.center={self.format_vector(pixels.get('center'), 1)} "
+            f"mid={self.format_vector(pixels.get('mid'), 1)} "
+            f"bottom={self.format_vector(pixels.get('bottom'), 1)}\n"
+            f"  camera_xyz_m.center={self.format_vector(camera_xyz.get('center'))} "
+            f"mid={self.format_vector(camera_xyz.get('mid'))} "
+            f"bottom={self.format_vector(camera_xyz.get('bottom'))}\n"
+            f"  base_xyz_m.center={self.format_vector(base_xyz.get('center'))} "
+            f"mid={self.format_vector(base_xyz.get('mid'))} "
+            f"bottom={self.format_vector(base_xyz.get('bottom'))}"
+        )
+        return debug
+
+    def log_current_tcp_pose(self, label):
+        pose = self.get_current_posx()
+        if pose is None:
+            self.log_info(f"[{label}] current TCP pose [base/task mm,deg]: unavailable")
+            return None
+        self.log_info(
+            f"[{label}] current TCP pose [base/task mm,deg]: "
+            f"{self.format_vector(pose, 3)}"
+        )
+        return pose
 
     def move_home_return(self):
         return self.move_home()
@@ -909,6 +996,7 @@ class BookMissionStateMachine(Node):
             self.result["book_scan_pose"] = book_scan_pose
 
             if not self.skip_scan_move:
+                self.log_current_tcp_pose("BEFORE_BOOK_SCAN_MOVE")
                 scan.move_robot_to_book_scan_pose(
                     robot_node,
                     book_scan_pose,
@@ -921,6 +1009,7 @@ class BookMissionStateMachine(Node):
                 )
                 if self.scan_move_settle_sec > 0.0:
                     time.sleep(float(self.scan_move_settle_sec))
+                self.log_current_tcp_pose("AFTER_BOOK_SCAN_MOVE")
 
             yolo_model = vision.YOLO(vision.MODEL_PATH)
             ocr = None
@@ -988,8 +1077,9 @@ class BookMissionStateMachine(Node):
                 lock_book_index=self.lock_book_index if self.lock_book_index >= 0 else None,
                 use_ocr_title_match=self.use_ocr_title_match,
             )
-            if selected_book_candidate is None and getattr(
-                self, "_allow_vision_only_selection", False
+            if selected_book_candidate is None and (
+                getattr(self, "_allow_vision_only_selection", False)
+                or self.allow_initial_vision_only_selection
             ):
                 selected_book_candidate = self.select_target_book_candidate_vision_only(books)
             if selected_book_candidate is not None:
@@ -998,6 +1088,17 @@ class BookMissionStateMachine(Node):
                     selected_book_candidate,
                     self.target_title,
                     allow_fallback_lock=self.allow_fallback_lock,
+                )
+
+            selected_book_pose_debug = None
+            selected_book_for_debug = scan.find_book_by_candidate(
+                books,
+                selected_book_candidate,
+            )
+            if selected_book_for_debug is not None:
+                selected_book_pose_debug = self.log_selected_book_pose(
+                    "BOOK_SCAN_SELECTED_POSE",
+                    selected_book_for_debug,
                 )
 
             scan_result = {
@@ -1015,6 +1116,7 @@ class BookMissionStateMachine(Node):
                 "book_scan_pose": book_scan_pose,
                 "books": books,
                 "selected_book_candidate": selected_book_candidate,
+                "selected_book_pose_debug": selected_book_pose_debug,
                 "ocr_early_stop_debug": ocr_build_debug,
                 "status": "book_scan_done" if selected_book_candidate is not None else "no_valid_book_pose",
             }
@@ -1028,6 +1130,7 @@ class BookMissionStateMachine(Node):
             )
             self.result["book_scan_result"] = scan_result
             self.result["selected_book_candidate"] = selected_book_candidate
+            self.result["selected_book_pose_debug"] = selected_book_pose_debug
             if selected_book_candidate is None:
                 return self.abort("no_valid_book_pose")
 
@@ -1131,10 +1234,18 @@ class BookMissionStateMachine(Node):
             return None
         return selected_book
 
+    def is_finite_vector_safe(self, values, length):
+        try:
+            return scan.is_finite_vector(values, length)
+        except (TypeError, ValueError):
+            return False
+
     def selected_book_camera_mid_depth_m(self, selected_book):
         camera_xyz = (selected_book or {}).get("camera_xyz_m") or {}
         mid_xyz = camera_xyz.get("mid")
-        if not scan.is_finite_vector(mid_xyz, 3):
+        if not self.is_finite_vector_safe(mid_xyz, 3) and self.allow_bottom_depth_fallback:
+            mid_xyz = camera_xyz.get("bottom")
+        if not self.is_finite_vector_safe(mid_xyz, 3):
             return None
         depth_m = float(mid_xyz[2])
         if depth_m <= 0.0:
@@ -1188,6 +1299,7 @@ class BookMissionStateMachine(Node):
         if self.dry_run:
             return True, result
 
+        result["tcp_pose_before_mm_deg"] = self.log_current_tcp_pose(f"BEFORE_{label}")
         ok = self.call_service(
             self.move_line_client,
             self.move_line_service,
@@ -1195,6 +1307,7 @@ class BookMissionStateMachine(Node):
             f"MoveLine[{label}]",
         )
         result["status"] = "moved" if ok else "move_failed"
+        result["tcp_pose_after_mm_deg"] = self.log_current_tcp_pose(f"AFTER_{label}")
         if ok and self.book_lateral_settle_sec > 0.0:
             time.sleep(float(self.book_lateral_settle_sec))
         return ok, result
@@ -1262,10 +1375,15 @@ class BookMissionStateMachine(Node):
             f"move={move_m:.3f}m axis={self.book_pre_approach_axis} "
             f"sign={self.book_pre_approach_axis_sign:.1f}"
         )
+        result["selected_book_pose_debug"] = self.log_selected_book_pose(
+            f"{label}_TARGET_BOOK_POSE",
+            selected_book,
+        )
 
         if self.dry_run:
             return True, result
 
+        result["tcp_pose_before_mm_deg"] = self.log_current_tcp_pose(f"BEFORE_{label}")
         ok = self.call_service(
             self.move_line_client,
             self.move_line_service,
@@ -1273,6 +1391,7 @@ class BookMissionStateMachine(Node):
             f"MoveLine[{label}]",
         )
         result["status"] = "moved" if ok else "move_failed"
+        result["tcp_pose_after_mm_deg"] = self.log_current_tcp_pose(f"AFTER_{label}")
         if ok and self.book_pre_approach_settle_sec > 0.0:
             time.sleep(float(self.book_pre_approach_settle_sec))
         return ok, result
@@ -1304,7 +1423,7 @@ class BookMissionStateMachine(Node):
             selected_book,
             self.book_pre_approach_target_distance_m,
             self.book_pre_approach_max_step_m,
-            "MOVE_TO_BOOK_20CM_OFFSET",
+            "MOVE_TO_BOOK_35CM_OFFSET",
         )
         self.result["book_pre_approach_result"] = result
         return ok
@@ -1318,49 +1437,16 @@ class BookMissionStateMachine(Node):
             return True
 
         lower_mm = abs(float(self.book_pre_verify_lower_z_mm))
-        request = MoveLine.Request()
-        # Base-frame relative Z down. Keep rotation unchanged.
-        request.pos = [0.0, 0.0, -lower_mm, 0.0, 0.0, 0.0]
-        request.vel = [
-            float(self.book_pre_approach_vel_linear),
-            float(self.book_pre_approach_vel_angular),
-        ]
-        request.acc = [
-            float(self.book_pre_approach_acc_linear),
-            float(self.book_pre_approach_acc_angular),
-        ]
-        request.time = 0.0
-        request.radius = 0.0
-        request.ref = 0
-        request.mode = 1
-        request.blend_type = 0
-        request.sync_type = 0
-
-        result = {
-            "enabled": True,
-            "status": "dry_run" if self.dry_run else "requested",
-            "lower_z_mm": lower_mm,
-            "ref": int(request.ref),
-            "mode": int(request.mode),
-            "request_pos_mm_deg": list(request.pos),
-        }
-        self.log_info(
-            f"[LOWER_CAMERA_FOR_VERIFY] base Z down {lower_mm:.1f}mm before second OCR"
+        signed_mm = float(self.book_pre_verify_lower_axis_sign) * lower_mm
+        ok, result = self.move_relative_tool_axis_mm(
+            self.book_pre_verify_lower_axis,
+            signed_mm,
+            "LOWER_CAMERA_FOR_VERIFY",
         )
 
-        if self.dry_run:
-            self.result["book_pre_verify_lower_result"] = result
-            return True
-
-        ok = self.call_service(
-            self.move_line_client,
-            self.move_line_service,
-            request,
-            "MoveLine[LOWER_CAMERA_FOR_VERIFY]",
-        )
-        result["status"] = "moved" if ok else "move_failed"
-        if ok and self.book_pre_approach_settle_sec > 0.0:
-            time.sleep(float(self.book_pre_approach_settle_sec))
+        result["enabled"] = True
+        result["lower_mm"] = lower_mm
+        result["axis_sign"] = float(self.book_pre_verify_lower_axis_sign)
         self.result["book_pre_verify_lower_result"] = result
         return ok
 
@@ -1660,7 +1746,20 @@ class BookMissionStateMachine(Node):
 
         self.result["pick_result"] = scan.sanitize_for_json(self.pick_executor.result)
         self.result["selected_book"] = scan.sanitize_for_json(selected_book)
-        self.result["selected_book_source"] = "mid"
+        source = "mid"
+        if (
+            self.allow_bottom_depth_fallback
+            and not self.is_finite_vector_safe(
+                (selected_book.get("camera_xyz_m") or {}).get("mid"),
+                3,
+            )
+            and self.is_finite_vector_safe(
+                (selected_book.get("camera_xyz_m") or {}).get("bottom"),
+                3,
+            )
+        ):
+            source = "bottom_depth_fallback"
+        self.result["selected_book_source"] = source
         return True
 
     def run_release_stage(self):
@@ -1671,6 +1770,24 @@ class BookMissionStateMachine(Node):
             "gripper_open_position": int(self.gripper_open_position),
         }
         return True
+
+    def run_place_lower_before_release_stage(self):
+        lower_mm = abs(float(self.place_lower_before_release_mm))
+        if lower_mm <= 0.0:
+            self.result["place_lower_result"] = {
+                "enabled": False,
+                "reason": "place_lower_before_release_mm<=0",
+            }
+            return True
+        ok, result = self.move_relative_tool_axis_mm(
+            "z",
+            lower_mm,
+            "LOWER_TO_PLACE_BOOK_Z_PLUS",
+        )
+        result["enabled"] = True
+        result["lower_mm"] = lower_mm
+        self.result["place_lower_result"] = result
+        return ok
 
     def run_return_home_stage(self):
         if not self.move_home_return():
@@ -1737,9 +1854,9 @@ class BookMissionStateMachine(Node):
             gripper_pick_open_result=self.result.get("gripper_pick_open_result"),
         )
 
-        if not self.pause_between_states("MOVE_TO_BOOK_20CM_OFFSET"):
+        if not self.pause_between_states("MOVE_TO_BOOK_35CM_OFFSET"):
             return self.abort("user_cancelled")
-        self.state = "MOVE_TO_BOOK_20CM_OFFSET"
+        self.state = "MOVE_TO_BOOK_35CM_OFFSET"
         self.trace_state(self.state, "running")
         if not self.run_book_pre_approach_stage():
             return self.abort(
@@ -1868,6 +1985,64 @@ class BookMissionStateMachine(Node):
         )
 
         if self.stop_after_experimental_pick_cycles:
+            if self.place_after_experimental_pick_cycles:
+                if not self.pause_between_states("MOVE_TO_PLACE_POSE"):
+                    return self.abort("user_cancelled")
+                self.state = "MOVE_TO_PLACE_POSE"
+                self.trace_state(self.state, "running")
+                if not self.move_place_pose():
+                    return self.abort("move_to_place_pose_failed")
+                self.trace_state(
+                    self.state,
+                    "ok",
+                    place_joint_pose_deg=list(self.place_joint_pose_deg),
+                )
+
+                if not self.pause_between_states("LOWER_TO_PLACE_BOOK"):
+                    return self.abort("user_cancelled")
+                self.state = "LOWER_TO_PLACE_BOOK"
+                self.trace_state(self.state, "running")
+                if not self.run_place_lower_before_release_stage():
+                    return self.abort(
+                        "place_lower_before_release_failed",
+                        place_lower_result=self.result.get("place_lower_result"),
+                    )
+                self.trace_state(
+                    self.state,
+                    "ok",
+                    place_lower_result=self.result.get("place_lower_result"),
+                )
+
+                if not self.pause_between_states("RELEASE_BOOK"):
+                    return self.abort("user_cancelled")
+                self.state = "RELEASE_BOOK"
+                self.trace_state(self.state, "running")
+                if not self.run_release_stage():
+                    return self.abort("release_failed")
+                self.trace_state(
+                    self.state,
+                    "ok",
+                    place_result=self.result.get("place_result"),
+                )
+
+                if not self.pause_between_states("RETURN_HOME"):
+                    return self.abort("user_cancelled")
+                self.state = "RETURN_HOME"
+                self.trace_state(self.state, "running")
+                if not self.run_return_home_stage():
+                    return self.abort("return_home_failed")
+                self.trace_state(
+                    self.state,
+                    "ok",
+                    home_result=self.result.get("home_result"),
+                )
+
+                self.state = "DONE"
+                self.result["status"] = "done"
+                self.trace_state(self.state, "ok")
+                self.save_final_result()
+                return True
+
             self.state = "DONE"
             self.result["status"] = "experimental_pick_cycles_done"
             self.trace_state(self.state, "ok")
@@ -1889,6 +2064,21 @@ class BookMissionStateMachine(Node):
         if not self.move_place_pose():
             return self.abort("move_to_place_pose_failed")
         self.trace_state(self.state, "ok", place_joint_pose_deg=list(self.place_joint_pose_deg))
+
+        if not self.pause_between_states("LOWER_TO_PLACE_BOOK"):
+            return self.abort("user_cancelled")
+        self.state = "LOWER_TO_PLACE_BOOK"
+        self.trace_state(self.state, "running")
+        if not self.run_place_lower_before_release_stage():
+            return self.abort(
+                "place_lower_before_release_failed",
+                place_lower_result=self.result.get("place_lower_result"),
+            )
+        self.trace_state(
+            self.state,
+            "ok",
+            place_lower_result=self.result.get("place_lower_result"),
+        )
 
         if not self.pause_between_states("RELEASE_BOOK"):
             return self.abort("user_cancelled")
@@ -1928,7 +2118,7 @@ def main(args=None):
     try:
         ok = node.execute()
         if ok:
-            node.get_logger().info("Mission completed successfully.")
+            node.log_info("Mission completed successfully.")
         else:
             node.get_logger().error(
                 f"Mission finished in state {node.state} with status {node.result.get('status')}"

@@ -15,6 +15,7 @@ from sensor_msgs.msg import CameraInfo, Image
 from tf2_ros import TransformBroadcaster
 
 
+DEFAULT_NODE_NAME = "simple_aruco_marker_tf_publisher"
 DEFAULT_MARKER_ID = 6
 DEFAULT_MARKER_LENGTH_M = 0.038
 DEFAULT_IMAGE_TOPIC = "/camera/camera/color/image_raw"
@@ -61,7 +62,7 @@ def rotation_matrix_to_quaternion(matrix):
 
 class SimpleArucoMarkerTfPublisher(Node):
     def __init__(self):
-        super().__init__("simple_aruco_marker_tf_publisher")
+        super().__init__(DEFAULT_NODE_NAME)
 
         self.declare_parameter("marker_id", DEFAULT_MARKER_ID)
         self.declare_parameter("marker_length_m", DEFAULT_MARKER_LENGTH_M)
