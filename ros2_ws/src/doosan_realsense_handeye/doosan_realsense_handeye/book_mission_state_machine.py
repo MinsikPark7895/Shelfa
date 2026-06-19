@@ -130,6 +130,7 @@ class BookMissionStateMachine(Node):
             "alignment_payload": None,
             "book_scan_pose": None,
             "book_scan_result": None,
+            "book_scan_attempts": [],
             "initial_book_scan_result": None,
             "verified_book_scan_result": None,
             "selected_book_candidate": None,
@@ -162,6 +163,7 @@ class BookMissionStateMachine(Node):
         self.declare_parameter("alignment_auto_run", True)
         self.declare_parameter("alignment_run_post_pipeline", False)
         self.declare_parameter("alignment_timeout_sec", 180.0)
+        self.declare_parameter("alignment_moveline_service_timeout_sec", 120.0)
         self.declare_parameter("alignment_use_mock", False)
         self.declare_parameter("alignment_post_alignment_no_display", True)
         self.declare_parameter("alignment_enable_initial_translation_jump", True)
@@ -199,6 +201,8 @@ class BookMissionStateMachine(Node):
         self.declare_parameter("scan_move_timeout_sec", 30.0)
         self.declare_parameter("skip_scan_move", False)
         self.declare_parameter("require_depth_for_scan", True)
+        self.declare_parameter("book_scan_retry_count", 3)
+        self.declare_parameter("book_scan_retry_wait_sec", 0.5)
 
         self.declare_parameter("book_pre_approach_target_distance_m", 0.20)
         self.declare_parameter("book_pre_approach_max_step_m", 0.35)
@@ -244,8 +248,11 @@ class BookMissionStateMachine(Node):
         )
         self.declare_parameter("marker2_alignment_dry_run", True)
         self.declare_parameter("marker2_alignment_auto_run", False)
+        self.declare_parameter("marker2_alignment_target_marker_id", 2)
         self.declare_parameter("marker2_alignment_timeout_sec", 240.0)
         self.declare_parameter("marker2_alignment_target_distance_m", 0.30)
+        self.declare_parameter("marker2_alignment_sign_tool_b_from_camera_y", -1.0)
+        self.declare_parameter("marker2_alignment_moveline_service_timeout_sec", 120.0)
         self.declare_parameter("marker2_alignment_enable_initial_translation_jump", True)
         self.declare_parameter("marker2_alignment_initial_translation_jump_axis_mode", "all")
         self.declare_parameter("marker2_alignment_initial_translation_jump_scale", 1.0)
@@ -321,6 +328,9 @@ class BookMissionStateMachine(Node):
             self.get_parameter("alignment_run_post_pipeline").value
         )
         self.alignment_timeout_sec = float(self.get_parameter("alignment_timeout_sec").value)
+        self.alignment_moveline_service_timeout_sec = float(
+            self.get_parameter("alignment_moveline_service_timeout_sec").value
+        )
         self.alignment_use_mock = bool(self.get_parameter("alignment_use_mock").value)
         self.alignment_post_alignment_no_display = bool(
             self.get_parameter("alignment_post_alignment_no_display").value
@@ -370,6 +380,10 @@ class BookMissionStateMachine(Node):
         self.scan_move_timeout_sec = float(self.get_parameter("scan_move_timeout_sec").value)
         self.skip_scan_move = bool(self.get_parameter("skip_scan_move").value)
         self.require_depth_for_scan = bool(self.get_parameter("require_depth_for_scan").value)
+        self.book_scan_retry_count = int(self.get_parameter("book_scan_retry_count").value)
+        self.book_scan_retry_wait_sec = float(
+            self.get_parameter("book_scan_retry_wait_sec").value
+        )
 
         self.book_pre_approach_target_distance_m = float(
             self.get_parameter("book_pre_approach_target_distance_m").value
@@ -494,11 +508,20 @@ class BookMissionStateMachine(Node):
         self.marker2_alignment_auto_run = bool(
             self.get_parameter("marker2_alignment_auto_run").value
         )
+        self.marker2_alignment_target_marker_id = int(
+            self.get_parameter("marker2_alignment_target_marker_id").value
+        )
         self.marker2_alignment_timeout_sec = float(
             self.get_parameter("marker2_alignment_timeout_sec").value
         )
         self.marker2_alignment_target_distance_m = float(
             self.get_parameter("marker2_alignment_target_distance_m").value
+        )
+        self.marker2_alignment_sign_tool_b_from_camera_y = float(
+            self.get_parameter("marker2_alignment_sign_tool_b_from_camera_y").value
+        )
+        self.marker2_alignment_moveline_service_timeout_sec = float(
+            self.get_parameter("marker2_alignment_moveline_service_timeout_sec").value
         )
         self.marker2_alignment_enable_initial_translation_jump = bool(
             self.get_parameter("marker2_alignment_enable_initial_translation_jump").value
@@ -945,6 +968,9 @@ class BookMissionStateMachine(Node):
             "-p",
             "initial_translation_jump_max_mm:="
             f"{self.alignment_initial_translation_jump_max_mm}",
+            "-p",
+            "moveline_service_timeout_sec:="
+            f"{self.alignment_moveline_service_timeout_sec}",
         ]
         if self.alignment_auto_run:
             command.extend(["-p", "auto_max_steps:=300"])
@@ -980,7 +1006,49 @@ class BookMissionStateMachine(Node):
         self.result["alignment_payload"] = payload
         return True
 
-    def run_book_scan_stage(self):
+    def record_book_scan_failure(
+        self,
+        reason,
+        abort_on_failure=True,
+        attempt_index=None,
+        total_attempts=None,
+        **details,
+    ):
+        if abort_on_failure:
+            return self.abort(reason, **details)
+
+        books = details.pop("books", [])
+        scan_result = {
+            "timestamp": datetime.now().isoformat(),
+            "mode": "book_mission_state_machine_scan",
+            "target_title": self.target_title,
+            "status": reason,
+            "failure_reason": reason,
+            "failure_details": scan.sanitize_for_json(details),
+            "attempt_index": attempt_index,
+            "total_attempts": total_attempts,
+            "alignment_payload": self.result.get("alignment_payload"),
+            "book_scan_pose": self.result.get("book_scan_pose"),
+            "books": scan.sanitize_for_json(books),
+            "selected_book_candidate": None,
+        }
+        self.result["book_scan_result"] = scan_result
+        self.result["selected_book_candidate"] = None
+        try:
+            scan.save_book_scan_result(scan_result)
+        except Exception as exc:
+            self.get_logger().warn(
+                f"Failed to save failed book scan result: {type(exc).__name__}: {exc}"
+            )
+        return False
+
+    def run_book_scan_stage(
+        self,
+        abort_on_failure=True,
+        move_to_scan_pose=None,
+        attempt_index=None,
+        total_attempts=None,
+    ):
         if not vision.rclpy.ok():
             vision.rclpy.init(args=None)
 
@@ -1001,13 +1069,21 @@ class BookMissionStateMachine(Node):
                 )
                 ok, error = scan.validate_alignment_payload(alignment_payload)
                 if not ok:
-                    return self.abort("alignment_payload_invalid", error=error)
+                    return self.record_book_scan_failure(
+                        "alignment_payload_invalid",
+                        abort_on_failure=abort_on_failure,
+                        attempt_index=attempt_index,
+                        total_attempts=total_attempts,
+                        error=error,
+                    )
                 self.result["alignment_payload"] = alignment_payload
 
             book_scan_pose = scan.compute_book_scan_pose(alignment_payload)
             self.result["book_scan_pose"] = book_scan_pose
 
-            if not self.skip_scan_move:
+            if move_to_scan_pose is None:
+                move_to_scan_pose = not self.skip_scan_move
+            if move_to_scan_pose:
                 scan.move_robot_to_book_scan_pose(
                     robot_node,
                     book_scan_pose,
@@ -1049,15 +1125,26 @@ class BookMissionStateMachine(Node):
                     break
                 time.sleep(0.05)
             if frame is None:
-                return self.abort("capture_failed")
+                return self.record_book_scan_failure(
+                    "capture_failed",
+                    abort_on_failure=abort_on_failure,
+                    attempt_index=attempt_index,
+                    total_attempts=total_attempts,
+                )
             if self.require_depth_for_scan and depth_frame is None:
-                return self.abort(
+                return self.record_book_scan_failure(
                     "depth_capture_failed",
+                    abort_on_failure=abort_on_failure,
+                    attempt_index=attempt_index,
+                    total_attempts=total_attempts,
                     detail="Mission scan requires depth to compute base-frame book targets.",
                 )
             if depth_frame is None:
-                return self.abort(
+                return self.record_book_scan_failure(
                     "depth_required_for_book_target",
+                    abort_on_failure=abort_on_failure,
+                    attempt_index=attempt_index,
+                    total_attempts=total_attempts,
                     detail="RGB frame arrived, but depth is required before book approach.",
                 )
 
@@ -1069,7 +1156,12 @@ class BookMissionStateMachine(Node):
                 yolo_conf=self.yolo_conf,
             )
             if not obb_data:
-                return self.abort("book_not_found")
+                return self.record_book_scan_failure(
+                    "book_not_found",
+                    abort_on_failure=abort_on_failure,
+                    attempt_index=attempt_index,
+                    total_attempts=total_attempts,
+                )
 
             books, ocr_build_debug = scan.build_book_scan_entries(
                 robot_node,
@@ -1116,6 +1208,8 @@ class BookMissionStateMachine(Node):
                 "selected_book_candidate": selected_book_candidate,
                 "ocr_early_stop_debug": ocr_build_debug,
                 "status": "book_scan_done" if selected_book_candidate is not None else "no_valid_book_pose",
+                "attempt_index": attempt_index,
+                "total_attempts": total_attempts,
             }
             scan.save_book_scan_result(scan_result)
             scan.publish_book_scan_markers(
@@ -1128,7 +1222,14 @@ class BookMissionStateMachine(Node):
             self.result["book_scan_result"] = scan_result
             self.result["selected_book_candidate"] = selected_book_candidate
             if selected_book_candidate is None:
-                return self.abort("no_valid_book_pose")
+                return self.record_book_scan_failure(
+                    "no_valid_book_pose",
+                    abort_on_failure=abort_on_failure,
+                    attempt_index=attempt_index,
+                    total_attempts=total_attempts,
+                    books=books,
+                    detected_books=len(books),
+                )
 
             if not self.no_display:
                 vis = scan.draw_scan_overlay(
@@ -1141,8 +1242,11 @@ class BookMissionStateMachine(Node):
                 cv2.imshow("Bookshelf Book Scan", vis)
                 cv2.waitKey(1)
         except Exception as exc:
-            return self.abort(
+            return self.record_book_scan_failure(
                 "book_scan_exception",
+                abort_on_failure=abort_on_failure,
+                attempt_index=attempt_index,
+                total_attempts=total_attempts,
                 exception_type=type(exc).__name__,
                 message=str(exc),
             )
@@ -1151,6 +1255,52 @@ class BookMissionStateMachine(Node):
                 reader.destroy_node()
 
         return True
+
+    def run_book_scan_stage_with_retries(self):
+        retry_count = max(0, int(self.book_scan_retry_count))
+        total_attempts = retry_count + 1
+        attempts = []
+        self.result["book_scan_attempts"] = attempts
+
+        for attempt_index in range(1, total_attempts + 1):
+            move_to_scan_pose = attempt_index == 1 and not self.skip_scan_move
+            self.get_logger().info(
+                f"[DETECT_BOOK] book scan attempt {attempt_index}/{total_attempts}"
+            )
+            ok = self.run_book_scan_stage(
+                abort_on_failure=False,
+                move_to_scan_pose=move_to_scan_pose,
+                attempt_index=attempt_index,
+                total_attempts=total_attempts,
+            )
+            scan_result = self.result.get("book_scan_result") or {}
+            attempt_record = {
+                "attempt_index": attempt_index,
+                "total_attempts": total_attempts,
+                "status": scan_result.get("status"),
+                "failure_reason": scan_result.get("failure_reason"),
+                "selected_book_candidate": scan_result.get("selected_book_candidate"),
+                "detected_book_count": len(scan_result.get("books") or []),
+            }
+            attempts.append(scan.sanitize_for_json(attempt_record))
+            if ok:
+                self.result["book_scan_retry_result"] = {
+                    "status": "success",
+                    "attempt_index": attempt_index,
+                    "total_attempts": total_attempts,
+                    "attempts": scan.sanitize_for_json(attempts),
+                }
+                return True
+
+            if attempt_index < total_attempts and self.book_scan_retry_wait_sec > 0.0:
+                time.sleep(float(self.book_scan_retry_wait_sec))
+
+        self.result["book_scan_retry_result"] = {
+            "status": "failed",
+            "total_attempts": total_attempts,
+            "attempts": scan.sanitize_for_json(attempts),
+        }
+        return False
 
     def select_target_book_candidate_vision_only(self, books):
         if not books:
@@ -1738,7 +1888,7 @@ class BookMissionStateMachine(Node):
             "ros2",
             "run",
             "doosan_realsense_handeye",
-            "aruco_marker2_proto_align",
+            "aruco_marker_proto_align",
             "--ros-args",
             "-p",
             f"dry_run:={'true' if self.marker2_alignment_dry_run else 'false'}",
@@ -1747,9 +1897,15 @@ class BookMissionStateMachine(Node):
             "-p",
             f"alignment_payload_json:={self.marker2_alignment_payload_json}",
             "-p",
+            f"target_marker_id:={self.marker2_alignment_target_marker_id}",
+            "-p",
+            f"marker_frame:=aruco_marker_{self.marker2_alignment_target_marker_id}",
+            "-p",
             "run_post_alignment_pipeline:=false",
             "-p",
             f"target_distance_m:={self.marker2_alignment_target_distance_m}",
+            "-p",
+            f"sign_tool_b_from_camera_y:={self.marker2_alignment_sign_tool_b_from_camera_y}",
             "-p",
             "enable_initial_translation_jump:="
             f"{'true' if self.marker2_alignment_enable_initial_translation_jump else 'false'}",
@@ -1762,6 +1918,9 @@ class BookMissionStateMachine(Node):
             "-p",
             "initial_translation_jump_max_mm:="
             f"{self.marker2_alignment_initial_translation_jump_max_mm}",
+            "-p",
+            "moveline_service_timeout_sec:="
+            f"{self.marker2_alignment_moveline_service_timeout_sec}",
         ]
         if self.marker2_alignment_auto_run:
             command.extend(["-p", "auto_max_steps:=300"])
@@ -1804,7 +1963,7 @@ class BookMissionStateMachine(Node):
             return self.abort("marker2_alignment_payload_invalid", error=error)
 
         marker_id = payload.get("target_marker_id", payload.get("marker_id"))
-        if marker_id is not None and int(marker_id) != 2:
+        if marker_id is not None and int(marker_id) != self.marker2_alignment_target_marker_id:
             return self.abort("marker2_alignment_wrong_marker_id", marker_id=marker_id)
 
         self.result["marker2_alignment_payload"] = payload
@@ -2193,8 +2352,30 @@ class BookMissionStateMachine(Node):
             return self.abort("user_cancelled")
         self.state = "DETECT_BOOK"
         self.trace_state(self.state, "running")
-        if not self.run_book_scan_stage():
-            return False
+        if not self.run_book_scan_stage_with_retries():
+            self.trace_state(
+                self.state,
+                "failed",
+                book_scan_retry_result=self.result.get("book_scan_retry_result"),
+            )
+            self.state = "RETURN_HOME"
+            self.trace_state(
+                self.state,
+                "running",
+                reason="book_scan_failed_after_retries",
+            )
+            home_ok = self.run_return_home_stage()
+            self.trace_state(
+                self.state,
+                "ok" if home_ok else "failed",
+                home_result=self.result.get("home_result"),
+                reason="book_scan_failed_after_retries",
+            )
+            return self.abort(
+                "book_scan_failed_after_retries",
+                book_scan_retry_result=self.result.get("book_scan_retry_result"),
+                return_home_ok=home_ok,
+            )
         self.result["initial_book_scan_result"] = self.result.get("book_scan_result")
         self.trace_state(
             self.state,

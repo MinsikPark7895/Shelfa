@@ -22,6 +22,8 @@
 
 보관함에 책을 넣을 때는 `2` 또는 `3`만 요청할 수 있습니다.
 
+현재 프로토타입에서 실제 로봇 동작까지 확인된 조합은 책장 marker `0`, 보관함 marker `2`입니다. marker `1`, `3`에 대한 서비스 인터페이스와 코드 경로는 준비되어 있지만, 실제 위치/자세 검증은 추가 테스트가 필요합니다.
+
 ## 서비스 1: 책장에서 책 뽑기
 
 서비스 타입:
@@ -158,6 +160,130 @@ realtime_results/mission_result.json
 - gripper service node
 - `doosan_realsense_handeye`의 book mission service server
 
+아래는 실제 로봇 동작 테스트 기준 실행 순서입니다.
+
+### 1. 워크스페이스 빌드 및 환경 로드
+
+```bash
+cd /home/dakae/ros2_ws/src/Shelfa/ros2_ws
+source /opt/ros/humble/setup.bash
+
+colcon build \
+  --base-paths src/shelfa_msgs src/doosan_realsense_handeye \
+  --packages-select shelfa_msgs doosan_realsense_handeye \
+  --symlink-install
+
+source install/setup.bash
+```
+
+### 2. Doosan robot bringup
+
+두산 로봇의 motion service가 떠 있어야 합니다.
+
+필수 확인 대상:
+
+```text
+/dsr01/motion/move_joint
+/dsr01/motion/move_line
+/dsr01/aux_control/get_current_posx
+```
+
+서비스 확인:
+
+```bash
+ros2 service list | grep /dsr01
+```
+
+실행 명령은 로봇 bringup 환경에 맞춰 사용합니다. 예시는 다음과 같습니다.
+
+```bash
+ros2 launch dsr_bringup2 dsr_bringup2_rviz.launch.py \
+  mode:=real \
+  model:=e0509 \
+  host:=192.168.137.100 \
+  port:=12345
+```
+
+### 3. RealSense camera node
+
+```bash
+ros2 launch realsense2_camera rs_launch.py \
+  enable_color:=true \
+  enable_depth:=true \
+  align_depth.enable:=true \
+  publish_tf:=true \
+  rgb_camera.color_profile:=1280x720x30 \
+  depth_module.depth_profile:=1280x720x30
+```
+
+필수 확인 대상:
+
+```text
+/camera/camera/color/image_raw
+/camera/camera/color/camera_info
+/camera/camera/aligned_depth_to_color/image_raw
+```
+
+### 4. ArUco marker TF publisher
+
+책장 marker `0`용 publisher:
+
+```bash
+ros2 run doosan_realsense_handeye simple_aruco_marker_tf_publisher \
+  --ros-args \
+  -p marker_id:=0 \
+  -p child_frame:=aruco_marker_0 \
+  -p parent_frame:=camera_color_optical_frame \
+  -p image_topic:=/camera/camera/color/image_raw \
+  -p camera_info_topic:=/camera/camera/color/camera_info
+```
+
+보관함 marker `2`용 publisher:
+
+```bash
+ros2 run doosan_realsense_handeye simple_aruco_marker2_tf_publisher \
+  --ros-args \
+  -p marker_id:=2 \
+  -p child_frame:=aruco_marker_2 \
+  -p parent_frame:=camera_color_optical_frame \
+  -p image_topic:=/camera/camera/color/image_raw \
+  -p camera_info_topic:=/camera/camera/color/camera_info
+```
+
+현재 실사용 테스트는 marker `0`, `2` 기준입니다. marker `1`, `3`을 쓰려면 해당 marker가 카메라에 보이는 초기 자세와 정렬 파라미터를 별도로 검증해야 합니다.
+
+TF 확인:
+
+```bash
+ros2 run tf2_ros tf2_echo camera_color_optical_frame aruco_marker_0
+```
+
+```bash
+ros2 run tf2_ros tf2_echo camera_color_optical_frame aruco_marker_2
+```
+
+### 5. Gripper service node
+
+```bash
+ros2 launch dsr_gripper_tcp gripper_service_node.launch.py
+```
+
+필수 확인 대상:
+
+```text
+/gripper_service/get_state
+/gripper_service/set_position
+/gripper_service/set_torque
+```
+
+서비스 확인:
+
+```bash
+ros2 service list | grep gripper_service
+```
+
+### 6. Book mission service server
+
 서비스 서버 기본 실행 예시:
 
 ```bash
@@ -169,8 +295,62 @@ ros2 launch doosan_realsense_handeye book_mission_service_server.launch.py
 ```bash
 ros2 launch doosan_realsense_handeye book_mission_service_server.launch.py \
   dry_run:=false \
+  dry_run_contract_mode:=false \
   auto_run:=true
 ```
+
+서비스 서버가 제공하는 서비스:
+
+```text
+/shelfa/pick_book_from_shelf
+/shelfa/place_book_in_storage
+```
+
+서비스 확인:
+
+```bash
+ros2 service list | grep shelfa
+```
+
+## 서비스 요청 예시
+
+### 책장에서 책 뽑기
+
+현재 실사용 검증 기준은 `shelf_id: 0`입니다.
+
+```bash
+ros2 service call /shelfa/pick_book_from_shelf shelfa_msgs/srv/PickBookFromShelf \
+  "{shelf_id: 0, book_title: '제3인류'}"
+```
+
+성공하면 로봇은 marker `0` 기준으로 책장에 정렬한 뒤 요청된 제목의 책을 찾아 뽑고, 임시 위치에 내려놓습니다. 이후 내부 상태에는 현재 뽑아둔 책 제목이 저장됩니다.
+
+같은 상태에서 다시 책 뽑기를 요청하면 안전상 거부됩니다.
+
+### 보관함에 책 넣기
+
+현재 실사용 검증 기준은 `storage_id: 2`입니다.
+
+```bash
+ros2 service call /shelfa/place_book_in_storage shelfa_msgs/srv/PlaceBookInStorage \
+  "{storage_id: 2}"
+```
+
+성공하면 로봇은 marker `2` 기준으로 보관함에 정렬한 뒤, 임시 위치에 내려둔 책을 다시 잡아 보관함에 넣습니다. 성공 후 내부 상태의 `held_book_title`은 초기화됩니다.
+
+뽑아둔 책이 없는 상태에서 보관함 넣기를 요청하면 안전상 거부됩니다.
+
+## 서비스 계약 테스트 모드
+
+SLAM/상위 로직에서 서비스 요청과 응답 형태만 먼저 확인하려면 아래 모드를 사용합니다.
+
+```bash
+ros2 launch doosan_realsense_handeye book_mission_service_server.launch.py \
+  dry_run:=true \
+  dry_run_contract_mode:=true
+```
+
+이 모드에서는 실제 정렬, 비전, OCR, 로봇 이동, 그리퍼 제어를 실행하지 않습니다. 대신 서비스 요청 검증, 상태 저장/초기화, 응답 포맷만 빠르게 확인합니다.
 
 ## SLAM/상위 로직에서 기대되는 흐름
 

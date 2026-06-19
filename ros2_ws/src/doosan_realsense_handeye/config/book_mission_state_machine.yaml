@@ -10,6 +10,7 @@ book_mission_state_machine:
     alignment_auto_run: true
     alignment_run_post_pipeline: false
     alignment_timeout_sec: 180.0
+    alignment_moveline_service_timeout_sec: 120.0
     alignment_use_mock: false
     alignment_post_alignment_no_display: true
     alignment_enable_initial_translation_jump: true
@@ -46,6 +47,8 @@ book_mission_state_machine:
     scan_move_timeout_sec: 30.0
     skip_scan_move: false
     require_depth_for_scan: true
+    book_scan_retry_count: 3
+    book_scan_retry_wait_sec: 0.5
     book_pre_approach_target_distance_m: 0.20
     book_pre_approach_max_step_m: 0.35
     book_pre_approach_axis: z
@@ -87,8 +90,11 @@ book_mission_state_machine:
     marker2_alignment_payload_json: ./realtime_results/marker2_alignment_payload.json
     marker2_alignment_dry_run: true
     marker2_alignment_auto_run: false
+    marker2_alignment_target_marker_id: 2
     marker2_alignment_timeout_sec: 240.0
     marker2_alignment_target_distance_m: 0.30
+    marker2_alignment_sign_tool_b_from_camera_y: -1.0
+    marker2_alignment_moveline_service_timeout_sec: 120.0
     marker2_alignment_enable_initial_translation_jump: true
     marker2_alignment_initial_translation_jump_axis_mode: all
     marker2_alignment_initial_translation_jump_scale: 1.0
