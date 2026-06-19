@@ -15,7 +15,8 @@ from tf2_ros import Buffer, TransformException, TransformListener
 
 
 MARKER_TARGET_PRESETS = {
-    0: [-12.5, -7.77, 91.42, -88.59, 77.57, -6.51],
+    # Previous marker0 view pose: [-12.5, -7.77, 91.42, -88.59, 77.57, -6.51]
+    0: [9.21, -6.98, 110.85, -87.77, 98.93, 14.04],
     1: [-12.5, 13.62, 127.84, -99.84, 82.24, 51.12],
 }
 MARKER_SCAN_TOOL_Y_OFFSETS_MM = {

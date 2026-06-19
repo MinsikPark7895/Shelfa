@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # Required before running this node:
 #   ros2 launch realsense2_camera rs_launch.py enable_color:=true enable_depth:=true align_depth.enable:=true publish_tf:=true rgb_camera.color_profile:=1280x720x30 depth_module.depth_profile:=1280x720x30
-#   ros2 run tf2_ros static_transform_publisher -0.01151140132331922 -0.04068446401037196 0.06598386871074707 -0.0004988115704339 0.01053595856067635 0.9999443259620144 -0.0002995673497136527 link_6 camera_color_optical_frame
+#   ros2 run tf2_ros static_transform_publisher --x 0.047696284489303686 --y -0.04076754872954019 --z 0.06633768863669905 --qx 0.5047148772454931 --qy 0.5057702861100585 --qz 0.4949917689883712 --qw -0.49441122459849096 --frame-id link_6 --child-frame-id camera_link
 #   ros2 run doosan_realsense_handeye simple_aruco_marker_tf_publisher --ros-args -p marker_id:=0 -p child_frame:=aruco_marker_0 -p parent_frame:=camera_color_optical_frame -p image_topic:=/camera/camera/color/image_raw -p camera_info_topic:=/camera/camera/color/camera_info
+#   ros2 run doosan_realsense_handeye simple_aruco_marker2_tf_publisher --ros-args -p marker_id:=2 -p child_frame:=aruco_marker_2 -p parent_frame:=camera_color_optical_frame -p image_topic:=/camera/camera/color/image_raw -p camera_info_topic:=/camera/camera/color/camera_info
 #   ros2 launch dsr_gripper_tcp gripper_service_node.launch.py
 """Home -> align -> detect -> pick -> place -> home mission state machine."""
 
@@ -63,6 +64,10 @@ MISSION_STATES = [
     "MOVE_LEFT_1CM",
     "SET_GRIPPER_600_AFTER_ALIGN",
     "EXPERIMENTAL_PICK_CYCLES",
+    "LOWER_TO_PLACE_BOOK",
+    "ALIGN_MARKER2_AFTER_TEMP_PLACE",
+    "REGRIP_TEMP_BOOK",
+    "PLACE_BOOK_AT_MARKER2",
     "PICK_BOOK",
     "MOVE_TO_PLACE_POSE",
     "RELEASE_BOOK",
@@ -135,6 +140,11 @@ class BookMissionStateMachine(Node):
             "book_left_shift_result": None,
             "gripper_after_lateral_result": None,
             "experimental_pick_cycles_result": None,
+            "place_lower_result": None,
+            "marker2_alignment_payload": None,
+            "marker2_alignment_result": None,
+            "regrip_temp_book_result": None,
+            "marker2_place_result": None,
             "pick_result": None,
             "place_result": None,
             "home_result": None,
@@ -225,6 +235,32 @@ class BookMissionStateMachine(Node):
         self.declare_parameter("experimental_pick_final_grip_position", 660)
         self.declare_parameter("experimental_pick_final_pull_mm", 400.0)
         self.declare_parameter("stop_after_experimental_pick_cycles", True)
+        self.declare_parameter("place_after_experimental_pick_cycles", False)
+        self.declare_parameter("place_lower_before_release_mm", 170.0)
+        self.declare_parameter("marker2_alignment_enabled", False)
+        self.declare_parameter(
+            "marker2_alignment_payload_json",
+            "./realtime_results/marker2_alignment_payload.json",
+        )
+        self.declare_parameter("marker2_alignment_dry_run", True)
+        self.declare_parameter("marker2_alignment_auto_run", False)
+        self.declare_parameter("marker2_alignment_timeout_sec", 240.0)
+        self.declare_parameter("marker2_alignment_target_distance_m", 0.30)
+        self.declare_parameter("marker2_alignment_enable_initial_translation_jump", True)
+        self.declare_parameter("marker2_alignment_initial_translation_jump_axis_mode", "all")
+        self.declare_parameter("marker2_alignment_initial_translation_jump_scale", 1.0)
+        self.declare_parameter("marker2_alignment_initial_translation_jump_max_mm", 120.0)
+        self.declare_parameter("regrip_after_marker2_alignment", False)
+        self.declare_parameter("regrip_move_to_place_pose_first", True)
+        self.declare_parameter("regrip_down_mm", 200.0)
+        self.declare_parameter("regrip_open_position", 500)
+        self.declare_parameter("regrip_close_position", 660)
+        self.declare_parameter("marker2_place_after_regrip_enabled", False)
+        self.declare_parameter("marker2_place_insert_z_mm", 400.0)
+        self.declare_parameter("marker2_place_pre_insert_z_mm", 0.0)
+        self.declare_parameter("marker2_place_drop_y_mm", 150.0)
+        self.declare_parameter("marker2_place_open_position", 500)
+        self.declare_parameter("marker2_place_return_home", True)
         self.declare_parameter("stop_after_gripper_after_lateral", False)
         self.declare_parameter("stop_after_book_verify_again", False)
 
@@ -439,6 +475,69 @@ class BookMissionStateMachine(Node):
         )
         self.stop_after_experimental_pick_cycles = bool(
             self.get_parameter("stop_after_experimental_pick_cycles").value
+        )
+        self.place_after_experimental_pick_cycles = bool(
+            self.get_parameter("place_after_experimental_pick_cycles").value
+        )
+        self.place_lower_before_release_mm = float(
+            self.get_parameter("place_lower_before_release_mm").value
+        )
+        self.marker2_alignment_enabled = bool(
+            self.get_parameter("marker2_alignment_enabled").value
+        )
+        self.marker2_alignment_payload_json = str(
+            self.get_parameter("marker2_alignment_payload_json").value
+        )
+        self.marker2_alignment_dry_run = bool(
+            self.get_parameter("marker2_alignment_dry_run").value
+        )
+        self.marker2_alignment_auto_run = bool(
+            self.get_parameter("marker2_alignment_auto_run").value
+        )
+        self.marker2_alignment_timeout_sec = float(
+            self.get_parameter("marker2_alignment_timeout_sec").value
+        )
+        self.marker2_alignment_target_distance_m = float(
+            self.get_parameter("marker2_alignment_target_distance_m").value
+        )
+        self.marker2_alignment_enable_initial_translation_jump = bool(
+            self.get_parameter("marker2_alignment_enable_initial_translation_jump").value
+        )
+        self.marker2_alignment_initial_translation_jump_axis_mode = str(
+            self.get_parameter("marker2_alignment_initial_translation_jump_axis_mode").value
+        )
+        self.marker2_alignment_initial_translation_jump_scale = float(
+            self.get_parameter("marker2_alignment_initial_translation_jump_scale").value
+        )
+        self.marker2_alignment_initial_translation_jump_max_mm = float(
+            self.get_parameter("marker2_alignment_initial_translation_jump_max_mm").value
+        )
+        self.regrip_after_marker2_alignment = bool(
+            self.get_parameter("regrip_after_marker2_alignment").value
+        )
+        self.regrip_move_to_place_pose_first = bool(
+            self.get_parameter("regrip_move_to_place_pose_first").value
+        )
+        self.regrip_down_mm = float(self.get_parameter("regrip_down_mm").value)
+        self.regrip_open_position = int(self.get_parameter("regrip_open_position").value)
+        self.regrip_close_position = int(self.get_parameter("regrip_close_position").value)
+        self.marker2_place_after_regrip_enabled = bool(
+            self.get_parameter("marker2_place_after_regrip_enabled").value
+        )
+        self.marker2_place_insert_z_mm = float(
+            self.get_parameter("marker2_place_insert_z_mm").value
+        )
+        self.marker2_place_pre_insert_z_mm = float(
+            self.get_parameter("marker2_place_pre_insert_z_mm").value
+        )
+        self.marker2_place_drop_y_mm = float(
+            self.get_parameter("marker2_place_drop_y_mm").value
+        )
+        self.marker2_place_open_position = int(
+            self.get_parameter("marker2_place_open_position").value
+        )
+        self.marker2_place_return_home = bool(
+            self.get_parameter("marker2_place_return_home").value
         )
         self.stop_after_gripper_after_lateral = bool(
             self.get_parameter("stop_after_gripper_after_lateral").value
@@ -1627,6 +1726,385 @@ class BookMissionStateMachine(Node):
         }
         return True
 
+    def run_marker2_alignment_stage(self):
+        if not self.marker2_alignment_enabled:
+            self.result["marker2_alignment_result"] = {
+                "enabled": False,
+                "reason": "marker2_alignment_enabled=false",
+            }
+            return True
+
+        command = [
+            "ros2",
+            "run",
+            "doosan_realsense_handeye",
+            "aruco_marker2_proto_align",
+            "--ros-args",
+            "-p",
+            f"dry_run:={'true' if self.marker2_alignment_dry_run else 'false'}",
+            "-p",
+            f"auto_run:={'true' if self.marker2_alignment_auto_run else 'false'}",
+            "-p",
+            f"alignment_payload_json:={self.marker2_alignment_payload_json}",
+            "-p",
+            "run_post_alignment_pipeline:=false",
+            "-p",
+            f"target_distance_m:={self.marker2_alignment_target_distance_m}",
+            "-p",
+            "enable_initial_translation_jump:="
+            f"{'true' if self.marker2_alignment_enable_initial_translation_jump else 'false'}",
+            "-p",
+            "initial_translation_jump_axis_mode:="
+            f"{self.marker2_alignment_initial_translation_jump_axis_mode}",
+            "-p",
+            "initial_translation_jump_scale:="
+            f"{self.marker2_alignment_initial_translation_jump_scale}",
+            "-p",
+            "initial_translation_jump_max_mm:="
+            f"{self.marker2_alignment_initial_translation_jump_max_mm}",
+        ]
+        if self.marker2_alignment_auto_run:
+            command.extend(["-p", "auto_max_steps:=300"])
+
+        payload_path = Path(self.marker2_alignment_payload_json)
+        baseline_mtime = 0.0
+        if payload_path.exists():
+            baseline_mtime = float(payload_path.stat().st_mtime)
+
+        self.log_info("[ALIGN_MARKER2_AFTER_TEMP_PLACE] launching marker2 alignment subprocess")
+        self.log_info("  " + " ".join(command))
+        try:
+            subprocess.run(command, check=True, timeout=self.marker2_alignment_timeout_sec)
+        except subprocess.TimeoutExpired:
+            return self.abort("marker2_alignment_timeout")
+        except subprocess.CalledProcessError as exc:
+            return self.abort("marker2_alignment_failed", returncode=exc.returncode)
+
+        if self.marker2_alignment_dry_run:
+            self.result["marker2_alignment_result"] = {
+                "enabled": True,
+                "dry_run": True,
+                "command": command,
+                "status": "dry_run_completed",
+            }
+            return True
+
+        if not payload_path.exists() or float(payload_path.stat().st_mtime) <= baseline_mtime:
+            return self.abort("marker2_alignment_payload_missing")
+
+        payload = scan.load_alignment_payload(
+            SimpleNamespace(
+                use_mock_alignment=False,
+                alignment_payload_json=self.marker2_alignment_payload_json,
+                alignment_payload=None,
+            )
+        )
+        ok, error = scan.validate_alignment_payload(payload)
+        if not ok:
+            return self.abort("marker2_alignment_payload_invalid", error=error)
+
+        marker_id = payload.get("target_marker_id", payload.get("marker_id"))
+        if marker_id is not None and int(marker_id) != 2:
+            return self.abort("marker2_alignment_wrong_marker_id", marker_id=marker_id)
+
+        self.result["marker2_alignment_payload"] = payload
+        self.result["marker2_alignment_result"] = {
+            "enabled": True,
+            "dry_run": False,
+            "command": command,
+            "status": "payload_saved",
+            "payload_json": self.marker2_alignment_payload_json,
+            "aligned_tcp_pose": payload.get("aligned_tcp_pose"),
+        }
+        return True
+
+    def run_place_lower_before_release_stage(self):
+        lower_mm = abs(float(self.place_lower_before_release_mm))
+        if lower_mm <= 0.0:
+            self.result["place_lower_result"] = {
+                "enabled": False,
+                "reason": "place_lower_before_release_mm<=0",
+            }
+            return True
+
+        ok, result = self.move_relative_tool_axis_mm(
+            "z",
+            lower_mm,
+            "LOWER_TO_PLACE_BOOK_Z_PLUS",
+        )
+        result["enabled"] = True
+        result["lower_mm"] = lower_mm
+        self.result["place_lower_result"] = result
+        return ok
+
+    def run_regrip_temp_book_stage(self):
+        if not self.regrip_after_marker2_alignment:
+            self.result["regrip_temp_book_result"] = {
+                "enabled": False,
+                "reason": "regrip_after_marker2_alignment=false",
+            }
+            return True
+        if not self.enable_gripper_control and not self.dry_run:
+            return self.abort("gripper_control_disabled")
+
+        stages = []
+        down_mm = abs(float(self.regrip_down_mm))
+
+        if self.regrip_move_to_place_pose_first:
+            if not self.move_place_pose():
+                return False
+            stages.append({
+                "stage": "MOVE_TO_TEMP_PLACE_POSE_FOR_REGRIP",
+                "joint_pose_deg": list(self.place_joint_pose_deg),
+            })
+
+        if not self.pick_executor.check_gripper_ready():
+            return False
+        if not self.pick_executor.torque_on():
+            return False
+        stages.append({"stage": "REGRIP_TORQUE_ON"})
+
+        if not self.pick_executor.set_gripper_position(
+            int(self.regrip_open_position),
+            "REGRIP_OPEN_GRIPPER",
+        ):
+            return False
+        stages.append({
+            "stage": "REGRIP_OPEN_GRIPPER",
+            "gripper_position": int(self.regrip_open_position),
+        })
+
+        if down_mm > 0.0:
+            ok, result = self.move_relative_tool_axis_mm(
+                "z",
+                down_mm,
+                "REGRIP_DESCEND_TO_TEMP_BOOK_Z_PLUS",
+            )
+            if not ok:
+                self.result["regrip_temp_book_result"] = {
+                    "enabled": True,
+                    "status": "descend_failed",
+                    "stages": scan.sanitize_for_json(stages),
+                    "descend_result": scan.sanitize_for_json(result),
+                }
+                return False
+            stages.append({
+                "stage": "REGRIP_DESCEND_TO_TEMP_BOOK_Z_PLUS",
+                "move_mm": down_mm,
+                "move_result": scan.sanitize_for_json(result),
+            })
+
+        if not self.pick_executor.set_gripper_position(
+            int(self.regrip_close_position),
+            "REGRIP_CLOSE_GRIPPER_ON_TEMP_BOOK",
+        ):
+            return False
+        stages.append({
+            "stage": "REGRIP_CLOSE_GRIPPER_ON_TEMP_BOOK",
+            "gripper_position": int(self.regrip_close_position),
+        })
+
+        if down_mm > 0.0:
+            ok, result = self.move_relative_tool_axis_mm(
+                "z",
+                -down_mm,
+                "REGRIP_LIFT_FROM_TEMP_BOOK_Z_MINUS",
+            )
+            if not ok:
+                self.result["regrip_temp_book_result"] = {
+                    "enabled": True,
+                    "status": "lift_failed",
+                    "stages": scan.sanitize_for_json(stages),
+                    "lift_result": scan.sanitize_for_json(result),
+                }
+                return False
+            stages.append({
+                "stage": "REGRIP_LIFT_FROM_TEMP_BOOK_Z_MINUS",
+                "move_mm": -down_mm,
+                "move_result": scan.sanitize_for_json(result),
+            })
+
+        self.result["regrip_temp_book_result"] = {
+            "enabled": True,
+            "status": "regripped",
+            "move_to_place_pose_first": bool(self.regrip_move_to_place_pose_first),
+            "down_mm": down_mm,
+            "open_position": int(self.regrip_open_position),
+            "close_position": int(self.regrip_close_position),
+            "stages": scan.sanitize_for_json(stages),
+        }
+        return True
+
+    def move_to_marker2_aligned_pose(self):
+        payload = self.result.get("marker2_alignment_payload") or {}
+        pose = payload.get("aligned_tcp_pose")
+        if not scan.is_finite_vector(pose, 6):
+            return False, {
+                "status": "missing_aligned_tcp_pose",
+                "payload": scan.sanitize_for_json(payload),
+            }
+
+        request = MoveLine.Request()
+        request.pos = [float(v) for v in pose]
+        request.vel = [
+            float(self.book_pre_approach_vel_linear),
+            float(self.book_pre_approach_vel_angular),
+        ]
+        request.acc = [
+            float(self.book_pre_approach_acc_linear),
+            float(self.book_pre_approach_acc_angular),
+        ]
+        request.time = 0.0
+        request.radius = 0.0
+        request.ref = 0
+        request.mode = 0
+        request.blend_type = 0
+        request.sync_type = 0
+
+        result = {
+            "status": "dry_run" if self.dry_run else "requested",
+            "aligned_tcp_pose": list(request.pos),
+            "ref": int(request.ref),
+            "mode": int(request.mode),
+        }
+        self.log_info(
+            "[MOVE_TO_MARKER2_ALIGNED_POSE] MoveLine absolute pose "
+            f"[mm,deg]={request.pos}"
+        )
+
+        if self.dry_run:
+            return True, result
+
+        ok = self.call_service(
+            self.move_line_client,
+            self.move_line_service,
+            request,
+            "MoveLine[MOVE_TO_MARKER2_ALIGNED_POSE]",
+        )
+        result["status"] = "moved" if ok else "move_failed"
+        if ok and self.book_lateral_settle_sec > 0.0:
+            time.sleep(float(self.book_lateral_settle_sec))
+        return ok, result
+
+    def run_marker2_place_book_stage(self):
+        if not self.marker2_place_after_regrip_enabled:
+            self.result["marker2_place_result"] = {
+                "enabled": False,
+                "reason": "marker2_place_after_regrip_enabled=false",
+            }
+            return True
+        if not self.enable_gripper_control and not self.dry_run:
+            return self.abort("gripper_control_disabled")
+
+        insert_z_mm = abs(float(self.marker2_place_insert_z_mm))
+        drop_y_mm = float(self.marker2_place_drop_y_mm)
+
+        stages = []
+        ok, result = self.move_to_marker2_aligned_pose()
+        stages.append({
+            "stage": "MOVE_TO_MARKER2_ALIGNED_POSE",
+            "move_result": scan.sanitize_for_json(result),
+        })
+        if not ok:
+            self.result["marker2_place_result"] = {
+                "enabled": True,
+                "status": "move_to_marker2_pose_failed",
+                "stages": scan.sanitize_for_json(stages),
+            }
+            return False
+
+        # Lower first, then insert past the marker2 alignment distance.
+        # Marker2 is aligned at 300mm; default insert adds 100mm margin.
+        for axis, signed_mm, label in (
+            ("y", drop_y_mm, "MARKER2_DROP_Y"),
+            ("z", insert_z_mm, "MARKER2_INSERT_Z_40CM"),
+        ):
+            if abs(float(signed_mm)) <= 0.0:
+                stages.append({
+                    "stage": label,
+                    "status": "skipped_zero_move",
+                    "axis": axis,
+                    "signed_mm": float(signed_mm),
+                })
+                continue
+            ok, move_result = self.move_relative_tool_axis_mm(axis, signed_mm, label)
+            stages.append({
+                "stage": label,
+                "axis": axis,
+                "signed_mm": float(signed_mm),
+                "move_result": scan.sanitize_for_json(move_result),
+            })
+            if not ok:
+                self.result["marker2_place_result"] = {
+                    "enabled": True,
+                    "status": "insert_move_failed",
+                    "failed_stage": label,
+                    "stages": scan.sanitize_for_json(stages),
+                }
+                return False
+
+        if not self.pick_executor.set_gripper_position(
+            int(self.marker2_place_open_position),
+            "MARKER2_OPEN_GRIPPER_PLACE_BOOK",
+        ):
+            return False
+        stages.append({
+            "stage": "MARKER2_OPEN_GRIPPER_PLACE_BOOK",
+            "gripper_position": int(self.marker2_place_open_position),
+        })
+
+        for axis, signed_mm, label in (
+            ("z", -insert_z_mm, "MARKER2_RETREAT_Z_40CM"),
+            ("y", -drop_y_mm, "MARKER2_RAISE_Y"),
+        ):
+            if abs(float(signed_mm)) <= 0.0:
+                stages.append({
+                    "stage": label,
+                    "status": "skipped_zero_move",
+                    "axis": axis,
+                    "signed_mm": float(signed_mm),
+                })
+                continue
+            ok, move_result = self.move_relative_tool_axis_mm(axis, signed_mm, label)
+            stages.append({
+                "stage": label,
+                "axis": axis,
+                "signed_mm": float(signed_mm),
+                "move_result": scan.sanitize_for_json(move_result),
+            })
+            if not ok:
+                self.result["marker2_place_result"] = {
+                    "enabled": True,
+                    "status": "retreat_move_failed",
+                    "failed_stage": label,
+                    "stages": scan.sanitize_for_json(stages),
+                }
+                return False
+
+        if self.marker2_place_return_home:
+            if not self.move_home_return():
+                self.result["marker2_place_result"] = {
+                    "enabled": True,
+                    "status": "return_home_failed",
+                    "stages": scan.sanitize_for_json(stages),
+                }
+                return False
+            stages.append({
+                "stage": "MARKER2_PLACE_RETURN_HOME",
+                "home_joint_pose_deg": list(self.home_joint_pose_deg),
+            })
+
+        self.result["marker2_place_result"] = {
+            "enabled": True,
+            "status": "placed",
+            "insert_z_mm": insert_z_mm,
+            "drop_y_mm": drop_y_mm,
+            "open_position": int(self.marker2_place_open_position),
+            "return_home": bool(self.marker2_place_return_home),
+            "stages": scan.sanitize_for_json(stages),
+        }
+        return True
+
     def run_pick_stage(self):
         if not self.enable_gripper_control and not self.dry_run:
             return self.abort("gripper_control_disabled")
@@ -1868,8 +2346,141 @@ class BookMissionStateMachine(Node):
         )
 
         if self.stop_after_experimental_pick_cycles:
+            should_temp_place = (
+                self.place_after_experimental_pick_cycles
+                or self.marker2_alignment_enabled
+            )
+            if should_temp_place:
+                if not self.pause_between_states("MOVE_TO_PLACE_POSE"):
+                    return self.abort("user_cancelled")
+                self.state = "MOVE_TO_PLACE_POSE"
+                self.trace_state(self.state, "running")
+                if not self.move_place_pose():
+                    return self.abort("move_to_place_pose_failed")
+                self.trace_state(
+                    self.state,
+                    "ok",
+                    place_joint_pose_deg=list(self.place_joint_pose_deg),
+                )
+
+                if not self.pause_between_states("LOWER_TO_PLACE_BOOK"):
+                    return self.abort("user_cancelled")
+                self.state = "LOWER_TO_PLACE_BOOK"
+                self.trace_state(self.state, "running")
+                if not self.run_place_lower_before_release_stage():
+                    return self.abort(
+                        "place_lower_before_release_failed",
+                        place_lower_result=self.result.get("place_lower_result"),
+                    )
+                self.trace_state(
+                    self.state,
+                    "ok",
+                    place_lower_result=self.result.get("place_lower_result"),
+                )
+
+                if not self.pause_between_states("RELEASE_BOOK"):
+                    return self.abort("user_cancelled")
+                self.state = "RELEASE_BOOK"
+                self.trace_state(self.state, "running")
+                if not self.run_release_stage():
+                    return self.abort("release_failed")
+                self.trace_state(
+                    self.state,
+                    "ok",
+                    place_result=self.result.get("place_result"),
+                )
+
+                if not self.pause_between_states("RETURN_HOME"):
+                    return self.abort("user_cancelled")
+                self.state = "RETURN_HOME"
+                self.trace_state(self.state, "running")
+                if not self.run_return_home_stage():
+                    return self.abort("return_home_failed")
+                self.trace_state(
+                    self.state,
+                    "ok",
+                    home_result=self.result.get("home_result"),
+                )
+
+            if self.marker2_alignment_enabled:
+                if not self.pause_between_states("ALIGN_MARKER2_AFTER_TEMP_PLACE"):
+                    return self.abort("user_cancelled")
+                self.state = "ALIGN_MARKER2_AFTER_TEMP_PLACE"
+                self.trace_state(self.state, "running")
+                if not self.run_marker2_alignment_stage():
+                    return self.abort(
+                        "marker2_alignment_stage_failed",
+                        marker2_alignment_result=self.result.get(
+                            "marker2_alignment_result"
+                        ),
+                    )
+                self.trace_state(
+                    self.state,
+                    "ok",
+                    marker2_alignment_result=self.result.get(
+                        "marker2_alignment_result"
+                    ),
+                )
+
+                if self.regrip_after_marker2_alignment:
+                    if not self.pause_between_states("REGRIP_TEMP_BOOK"):
+                        return self.abort("user_cancelled")
+                    self.state = "REGRIP_TEMP_BOOK"
+                    self.trace_state(self.state, "running")
+                    if not self.run_regrip_temp_book_stage():
+                        return self.abort(
+                            "regrip_temp_book_failed",
+                            regrip_temp_book_result=self.result.get(
+                                "regrip_temp_book_result"
+                            ),
+                        )
+                    self.trace_state(
+                        self.state,
+                        "ok",
+                        regrip_temp_book_result=self.result.get(
+                            "regrip_temp_book_result"
+                        ),
+                    )
+
+                    if self.marker2_place_after_regrip_enabled:
+                        if not self.pause_between_states("PLACE_BOOK_AT_MARKER2"):
+                            return self.abort("user_cancelled")
+                        self.state = "PLACE_BOOK_AT_MARKER2"
+                        self.trace_state(self.state, "running")
+                        if not self.run_marker2_place_book_stage():
+                            return self.abort(
+                                "marker2_place_book_failed",
+                                marker2_place_result=self.result.get(
+                                    "marker2_place_result"
+                                ),
+                            )
+                        self.trace_state(
+                            self.state,
+                            "ok",
+                            marker2_place_result=self.result.get(
+                                "marker2_place_result"
+                            ),
+                        )
+
             self.state = "DONE"
-            self.result["status"] = "experimental_pick_cycles_done"
+            if (
+                self.marker2_alignment_enabled
+                and self.regrip_after_marker2_alignment
+                and self.marker2_place_after_regrip_enabled
+            ):
+                self.result["status"] = (
+                    "experimental_pick_cycles_temp_placed_marker2_aligned_regripped_marker2_placed"
+                )
+            elif self.marker2_alignment_enabled and self.regrip_after_marker2_alignment:
+                self.result["status"] = (
+                    "experimental_pick_cycles_temp_placed_marker2_aligned_regripped"
+                )
+            elif self.marker2_alignment_enabled:
+                self.result["status"] = "experimental_pick_cycles_temp_placed_marker2_aligned"
+            elif should_temp_place:
+                self.result["status"] = "experimental_pick_cycles_temp_placed"
+            else:
+                self.result["status"] = "experimental_pick_cycles_done"
             self.trace_state(self.state, "ok")
             self.save_final_result()
             return True

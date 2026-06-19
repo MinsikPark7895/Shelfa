@@ -81,6 +81,29 @@ book_mission_state_machine:
     experimental_pick_final_grip_position: 660
     experimental_pick_final_pull_mm: 400.0
     stop_after_experimental_pick_cycles: true
+    place_after_experimental_pick_cycles: false
+    place_lower_before_release_mm: 170.0
+    marker2_alignment_enabled: false
+    marker2_alignment_payload_json: ./realtime_results/marker2_alignment_payload.json
+    marker2_alignment_dry_run: true
+    marker2_alignment_auto_run: false
+    marker2_alignment_timeout_sec: 240.0
+    marker2_alignment_target_distance_m: 0.30
+    marker2_alignment_enable_initial_translation_jump: true
+    marker2_alignment_initial_translation_jump_axis_mode: all
+    marker2_alignment_initial_translation_jump_scale: 1.0
+    marker2_alignment_initial_translation_jump_max_mm: 120.0
+    regrip_after_marker2_alignment: false
+    regrip_move_to_place_pose_first: true
+    regrip_down_mm: 200.0
+    regrip_open_position: 500
+    regrip_close_position: 660
+    marker2_place_after_regrip_enabled: false
+    marker2_place_insert_z_mm: 400.0
+    marker2_place_pre_insert_z_mm: 0.0
+    marker2_place_drop_y_mm: 150.0
+    marker2_place_open_position: 500
+    marker2_place_return_home: true
     stop_after_gripper_after_lateral: false
     stop_after_book_verify_again: false
     home_joint_pose_deg: [0.0, 0.0, 90.0, 0.0, 90.0, 0.0]
