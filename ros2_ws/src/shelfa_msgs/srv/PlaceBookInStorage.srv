@@ -1,0 +1,8 @@
+# 임시 배치 위치에 있는 책을 다시 집어 보관함에 넣습니다.
+# storage_id는 보관함 ArUco marker id이며 2 또는 3만 허용합니다.
+int32 storage_id
+---
+bool success
+string message
+string placed_book_title
+string result_json
