@@ -1,49 +1,128 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 echo "========================================="
-echo "🦾 Shelfa 두산 로봇팔 제어 시스템 시작"
+echo "Shelfa 책 감지-집기 실행 전 필수 노드 시작"
 echo "========================================="
 
-# 환경 변수 설정 (경로는 팀원 컴퓨터 기준 ~/Shelfa)
+SHELFA_ROOT="${SHELFA_ROOT:-/home/dakae/ros2_ws/src/Shelfa}"
+ROS_WS="${ROS_WS:-${SHELFA_ROOT}/ros2_ws}"
+ROBOT_HOST="${ROBOT_HOST:-110.120.1.56}"
+ROBOT_PORT="${ROBOT_PORT:-12345}"
+ROBOT_MODEL="${ROBOT_MODEL:-e0509}"
+ROBOT_NAMESPACE="${ROBOT_NAMESPACE:-dsr01}"
+ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-26}"
+ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
+
 source /opt/ros/humble/setup.bash
-source ~/Shelfa/ros2_ws/install/setup.bash
-export ROS_LOCALHOST_ONLY=0
-export ROS_DOMAIN_ID=26
+if [ -f "${ROS_WS}/install/setup.bash" ]; then
+  source "${ROS_WS}/install/setup.bash"
+else
+  echo "오류: ${ROS_WS}/install/setup.bash 파일을 찾을 수 없습니다."
+  echo "먼저 아래 명령으로 빌드하세요:"
+  echo "  cd ${ROS_WS}"
+  echo "  colcon build --symlink-install"
+  exit 1
+fi
 
-# ==========================================
-# 1. 두산 로봇팔 본체 + RViz 실행
-# ==========================================
-echo "[1/3] 🦾 로봇팔 본체 및 RViz 실행 중..."
-ros2 launch doosan_realsense_handeye dsr_bringup2_rviz_gripper_camera.launch.py mode:=real host:=110.120.1.56 port:=12345 model:=e0509 &
-ROBOT_PID=$!
+export ROS_DOMAIN_ID
+export ROS_LOCALHOST_ONLY
 
-echo "⏳ 로봇팔 초기화 대기 (10초)..."
-sleep 10
+PIDS=()
 
-# ==========================================
-# 2. 그리퍼 서비스 노드 실행
-# ==========================================
-echo "[2/3] 🖐️ 그리퍼 서비스 노드 실행 중..."
-ros2 launch dsr_gripper_tcp gripper_service_node.launch.py controller_host:=110.120.1.56 namespace:=dsr01 &
-GRIPPER_PID=$!
+start_node() {
+  local name="$1"
+  shift
+  echo
+  echo "[$name] 실행 중:"
+  printf '  %q' "$@"
+  echo
+  "$@" &
+  PIDS+=("$!")
+  sleep 2
+}
 
-echo "⏳ 그리퍼 초기화 대기 (5초)..."
-sleep 5
+cleanup() {
+  echo
+  echo "Shelfa 필수 노드를 종료합니다..."
+  for pid in "${PIDS[@]}"; do
+    kill "${pid}" 2>/dev/null || true
+  done
+  wait 2>/dev/null || true
+}
+trap cleanup INT TERM EXIT
 
-# ==========================================
-# 3. 리얼센스 카메라 및 ArUco 마커 인식 실행
-# ==========================================
-echo "[3/3] 📷 리얼센스 카메라 및 ArUco 인식 실행 중..."
-ros2 run doosan_realsense_handeye aruco_realsense_tf_publisher --ros-args -p target_id:=0 -p marker_length_m:=0.05 -p width:=640 -p height:=480 -p fps:=30 &
-CAMERA_PID=$!
+cd "${ROS_WS}"
 
+start_node "두산 로봇 bringup + RViz" \
+  ros2 launch doosan_realsense_handeye dsr_bringup2_rviz_gripper_camera.launch.py \
+    mode:=real \
+    host:="${ROBOT_HOST}" \
+    port:="${ROBOT_PORT}" \
+    model:="${ROBOT_MODEL}"
+
+echo "로봇 bringup 초기화를 기다립니다..."
+sleep 8
+
+start_node "RealSense 카메라" \
+  ros2 launch realsense2_camera rs_launch.py \
+    enable_color:=true \
+    enable_depth:=true \
+    align_depth.enable:=true \
+    publish_tf:=true \
+    rgb_camera.color_profile:=1280x720x30 \
+    depth_module.depth_profile:=1280x720x30
+
+start_node "그리퍼 서비스" \
+  ros2 launch dsr_gripper_tcp gripper_service_node.launch.py \
+    controller_host:="${ROBOT_HOST}" \
+    namespace:="${ROBOT_NAMESPACE}"
+
+start_node "ArUco marker 0 TF 발행기" \
+  ros2 run doosan_realsense_handeye simple_aruco_marker_tf_publisher \
+    --ros-args \
+    -p marker_id:=0 \
+    -p child_frame:=aruco_marker_0 \
+    -p parent_frame:=camera_color_optical_frame \
+    -p image_topic:=/camera/camera/color/image_raw \
+    -p camera_info_topic:=/camera/camera/color/camera_info
+
+start_node "ArUco marker 2 TF 발행기" \
+  ros2 run doosan_realsense_handeye simple_aruco_marker2_tf_publisher \
+    --ros-args \
+    -p marker_id:=2 \
+    -p child_frame:=aruco_marker_2 \
+    -p parent_frame:=camera_color_optical_frame \
+    -p image_topic:=/camera/camera/color/image_raw \
+    -p camera_info_topic:=/camera/camera/color/camera_info
+
+echo
 echo "========================================="
-echo "✅ 모든 로봇팔 시스템 가동 완료! (마스터 노드 명령 대기 중)"
-echo "🛑 종료하시려면 이 터미널에서 [Ctrl + C]를 누르세요."
+echo "필수 노드가 실행 중입니다."
+echo "로봇 주변 안전을 확인한 뒤에만 mission 노드를 실행하세요."
+echo "새 터미널을 열고 아래 명령을 실행하세요:"
+echo
+cat <<'EOF'
+cd /home/dakae/ros2_ws/src/Shelfa/ros2_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 run doosan_realsense_handeye book_mission_state_machine \
+  --ros-args \
+  -p dry_run:=false \
+  -p auto_run:=false \
+  -p alignment_dry_run:=false \
+  -p alignment_auto_run:=false \
+  -p marker2_alignment_enabled:=true \
+  -p marker2_alignment_dry_run:=false \
+  -p marker2_alignment_auto_run:=false \
+  -p regrip_after_marker2_alignment:=true \
+  -p marker2_place_after_regrip_enabled:=true \
+  -p alignment_timeout_sec:=600.0 \
+  -p marker2_alignment_timeout_sec:=600.0 \
+  -p service_call_timeout_sec:=120.0
+EOF
+echo
+echo "필수 노드를 종료하려면 이 터미널에서 Ctrl+C를 누르세요."
 echo "========================================="
 
-# Ctrl+C를 눌렀을 때 모든 백그라운드 프로세스를 안전하게 종료
-trap "echo -e '\n🛑 종료 신호 감지! 로봇팔 시스템을 안전하게 종료합니다...'; killall -9 rviz2 2>/dev/null; kill $ROBOT_PID $GRIPPER_PID $CAMERA_PID 2>/dev/null; exit" SIGINT
-
-# 백그라운드 프로세스들이 계속 돌아가도록 스크립트를 대기 상태로 유지
 wait
