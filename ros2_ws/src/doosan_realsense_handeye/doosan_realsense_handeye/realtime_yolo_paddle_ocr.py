@@ -3,7 +3,7 @@ import os
 import json
 import time
 import numpy as np
-import pyrealsense2 as rs
+from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime
 
@@ -16,7 +16,10 @@ from paddleocr import PaddleOCR
 import rclpy
 from rclpy.duration import Duration
 from rclpy.node import Node
+from rclpy.time import Time
 from geometry_msgs.msg import PointStamped, PoseStamped
+from cv_bridge import CvBridge
+from sensor_msgs.msg import CameraInfo, Image
 from tf2_ros import Buffer, TransformException, TransformListener
 import tf2_geometry_msgs  # noqa: F401 - PointStamped/PoseStamped TF 변환 등록용
 
@@ -26,7 +29,38 @@ except ImportError:
     SetPosition = None
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-MODEL_PATH = str(PACKAGE_ROOT / "runs/obb/runs/obb/book_spine_v1/weights/best.pt")
+MODEL_REL_PATH = Path("runs/obb/runs/obb/book_spine_v1/weights/best.pt")
+
+
+def resolve_model_path():
+    candidates = []
+
+    env_path = os.environ.get("BOOK_SPINE_MODEL_PATH")
+    if env_path:
+        candidates.append(Path(env_path).expanduser())
+
+    candidates.append(PACKAGE_ROOT / MODEL_REL_PATH)
+    candidates.append(Path.cwd() / MODEL_REL_PATH)
+
+    for ancestor in Path(__file__).resolve().parents:
+        candidates.append(ancestor / MODEL_REL_PATH)
+        candidates.append(ancestor / "src" / "doosan_realsense_handeye" / MODEL_REL_PATH)
+        candidates.append(ancestor / "src" / "dakae_e0509_servo" / MODEL_REL_PATH)
+
+    seen = set()
+    for candidate in candidates:
+        candidate = candidate.resolve()
+        candidate_str = str(candidate)
+        if candidate_str in seen:
+            continue
+        seen.add(candidate_str)
+        if candidate.exists():
+            return candidate_str
+
+    return str(PACKAGE_ROOT / MODEL_REL_PATH)
+
+
+MODEL_PATH = resolve_model_path()
 
 OUTPUT_DIR = "./realtime_results"
 CROP_DIR = os.path.join(OUTPUT_DIR, "crops")
@@ -71,6 +105,145 @@ GRIPPER_SERVICE_NAME = "/gripper_service/set_position"
 GRIPPER_OPEN_POSITION = 0
 GRIPPER_CLOSE_POSITION = 500
 GRIPPER_TIMEOUT_SEC = 5.0
+DEFAULT_COLOR_IMAGE_TOPIC = "/camera/camera/color/image_raw"
+DEFAULT_DEPTH_IMAGE_TOPIC = "/camera/camera/aligned_depth_to_color/image_raw"
+DEFAULT_CAMERA_INFO_TOPIC = "/camera/camera/color/camera_info"
+DEFAULT_DEPTH_SCALE_M = 0.001
+
+
+@dataclass
+class CameraIntrinsics:
+    width: int
+    height: int
+    fx: float
+    fy: float
+    ppx: float
+    ppy: float
+    coeffs: list
+
+
+class DepthImageFrame:
+    def __init__(self, image_array, encoding, depth_scale_m=DEFAULT_DEPTH_SCALE_M):
+        self._image = np.asarray(image_array)
+        self.encoding = str(encoding or "").lower()
+        self.depth_scale_m = float(depth_scale_m)
+
+    def get_height(self):
+        return int(self._image.shape[0])
+
+    def get_width(self):
+        return int(self._image.shape[1])
+
+    def get_distance(self, x, y):
+        if self._image.size == 0:
+            return 0.0
+
+        h = self.get_height()
+        w = self.get_width()
+        xx = int(min(max(int(x), 0), w - 1))
+        yy = int(min(max(int(y), 0), h - 1))
+        value = self._image[yy, xx]
+
+        if value is None:
+            return 0.0
+
+        try:
+            depth_value = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+        if not np.isfinite(depth_value) or depth_value <= 0.0:
+            return 0.0
+
+        if "32f" in self.encoding or "float" in self.encoding:
+            return depth_value
+
+        return depth_value * self.depth_scale_m
+
+
+def camera_info_to_intrinsics(camera_info_msg):
+    return CameraIntrinsics(
+        width=int(camera_info_msg.width),
+        height=int(camera_info_msg.height),
+        fx=float(camera_info_msg.k[0]),
+        fy=float(camera_info_msg.k[4]),
+        ppx=float(camera_info_msg.k[2]),
+        ppy=float(camera_info_msg.k[5]),
+        coeffs=[float(value) for value in camera_info_msg.d],
+    )
+
+
+class RealSenseTopicReader(Node):
+    def __init__(self):
+        super().__init__("realsense_topic_reader")
+        self.declare_parameter("color_image_topic", DEFAULT_COLOR_IMAGE_TOPIC)
+        self.declare_parameter("depth_image_topic", DEFAULT_DEPTH_IMAGE_TOPIC)
+        self.declare_parameter("camera_info_topic", DEFAULT_CAMERA_INFO_TOPIC)
+        self.declare_parameter("depth_scale_m", DEFAULT_DEPTH_SCALE_M)
+
+        self.color_image_topic = str(self.get_parameter("color_image_topic").value)
+        self.depth_image_topic = str(self.get_parameter("depth_image_topic").value)
+        self.camera_info_topic = str(self.get_parameter("camera_info_topic").value)
+        self.depth_scale_m = float(self.get_parameter("depth_scale_m").value)
+
+        self.bridge = CvBridge()
+        self.latest_frame = None
+        self.latest_depth_frame = None
+        self.latest_color_msg = None
+        self.latest_depth_msg = None
+        self.latest_camera_info = None
+        self.latest_intrinsics = None
+
+        self.create_subscription(Image, self.color_image_topic, self._on_color_image, 10)
+        self.create_subscription(Image, self.depth_image_topic, self._on_depth_image, 10)
+        self.create_subscription(CameraInfo, self.camera_info_topic, self._on_camera_info, 10)
+
+    def _on_color_image(self, msg):
+        try:
+            frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+        except Exception as exc:
+            self.get_logger().warn(f"Failed to convert color image: {exc}")
+            return
+
+        self.latest_color_msg = msg
+        self.latest_frame = frame
+
+    def _on_depth_image(self, msg):
+        try:
+            depth_array = self.bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
+        except Exception as exc:
+            self.get_logger().warn(f"Failed to convert depth image: {exc}")
+            return
+
+        self.latest_depth_msg = msg
+        self.latest_depth_frame = DepthImageFrame(
+            depth_array,
+            encoding=msg.encoding,
+            depth_scale_m=self.depth_scale_m,
+        )
+
+    def _on_camera_info(self, msg):
+        self.latest_camera_info = msg
+        self.latest_intrinsics = camera_info_to_intrinsics(msg)
+
+    def wait_for_ready(self, require_depth=True, timeout_sec=10.0):
+        deadline = time.monotonic() + float(timeout_sec)
+        while rclpy.ok() and time.monotonic() < deadline:
+            if self.latest_frame is not None and self.latest_intrinsics is not None:
+                if not require_depth or self.latest_depth_frame is not None:
+                    return True
+            rclpy.spin_once(self, timeout_sec=0.1)
+        return (
+            self.latest_frame is not None
+            and self.latest_intrinsics is not None
+            and (not require_depth or self.latest_depth_frame is not None)
+        )
+
+    def snapshot(self):
+        return self.latest_frame, self.latest_depth_frame, self.latest_color_msg
+
+    def stop(self):
+        return None
 
 
 def is_korean(ch):
@@ -205,13 +378,24 @@ def deproject_pixel_to_camera_xyz(depth_frame, intrinsics, px, py):
     if depth_m is None or intrinsics is None:
         return [None, None, None]
 
-    xyz = rs.rs2_deproject_pixel_to_point(
-        intrinsics,
-        [float(px), float(py)],
-        float(depth_m)
-    )
+    if hasattr(intrinsics, "fx") and hasattr(intrinsics, "fy"):
+        fx = float(intrinsics.fx)
+        fy = float(intrinsics.fy)
+        ppx = float(intrinsics.ppx)
+        ppy = float(intrinsics.ppy)
+    elif hasattr(intrinsics, "k"):
+        fx = float(intrinsics.k[0])
+        fy = float(intrinsics.k[4])
+        ppx = float(intrinsics.k[2])
+        ppy = float(intrinsics.k[5])
+    else:
+        return [None, None, None]
 
-    return [round(float(v), 3) for v in xyz]
+    x = (float(px) - ppx) / fx * float(depth_m)
+    y = (float(py) - ppy) / fy * float(depth_m)
+    z = float(depth_m)
+
+    return [round(float(x), 3), round(float(y), 3), round(float(z), 3)]
 
 
 def is_valid_camera_xyz(camera_xyz_m):
@@ -719,14 +903,30 @@ def get_aruco_dictionary(dict_name):
 
 
 def make_camera_matrix_from_realsense_intrinsics(intrinsics):
+    if intrinsics is None:
+        raise ValueError("Camera intrinsics are not available")
+
+    if hasattr(intrinsics, "fx") and hasattr(intrinsics, "fy"):
+        fx = float(intrinsics.fx)
+        fy = float(intrinsics.fy)
+        ppx = float(intrinsics.ppx)
+        ppy = float(intrinsics.ppy)
+        coeffs = getattr(intrinsics, "coeffs", [])
+    elif hasattr(intrinsics, "k"):
+        fx = float(intrinsics.k[0])
+        fy = float(intrinsics.k[4])
+        ppx = float(intrinsics.k[2])
+        ppy = float(intrinsics.k[5])
+        coeffs = getattr(intrinsics, "d", [])
+    else:
+        raise TypeError(f"Unsupported intrinsics type: {type(intrinsics)!r}")
+
     camera_matrix = np.array([
-        [intrinsics.fx, 0.0, intrinsics.ppx],
-        [0.0, intrinsics.fy, intrinsics.ppy],
+        [fx, 0.0, ppx],
+        [0.0, fy, ppy],
         [0.0, 0.0, 1.0],
     ], dtype=np.float64)
-
-    dist_coeffs = np.array(intrinsics.coeffs, dtype=np.float64)
-
+    dist_coeffs = np.array(coeffs, dtype=np.float64).reshape(-1)
     return camera_matrix, dist_coeffs
 
 
@@ -922,13 +1122,23 @@ class BookVisionRobotNode(Node):
                 GRIPPER_SERVICE_NAME
             )
 
+    def destroy_node(self):
+        tf_listener = getattr(self, "tf_listener", None)
+        if tf_listener is not None and hasattr(tf_listener, "unregister"):
+            try:
+                tf_listener.unregister()
+            except Exception as exc:  # noqa: BLE001
+                print(f"[ROS2 TF] TransformListener unregister failed: {exc}")
+        return super().destroy_node()
+
     def transform_camera_xyz_to_base(self, camera_xyz_m):
         if not is_finite_xyz(camera_xyz_m):
             print("[ROS2 TF] camera_xyz_m invalid")
             return None
 
         point = PointStamped()
-        point.header.stamp = self.get_clock().now().to_msg()
+        # 최신 TF를 사용해 미래 시점 extrapolation 오류를 피한다.
+        point.header.stamp = Time().to_msg()
         point.header.frame_id = CAMERA_FRAME
         point.point.x = float(camera_xyz_m[0])
         point.point.y = float(camera_xyz_m[1])
@@ -1301,90 +1511,34 @@ def build_and_publish_robot_target(
 
 
 def init_realsense(width=1280, height=720, fps=30):
-    """
-    RealSense color + depth 카메라 초기화
+    """Subscribe to the external RealSense node instead of opening the device here."""
+    if not rclpy.ok():
+        rclpy.init(args=None)
 
-    일부 장치/USB 연결에서는 특정 해상도 조합(예: 1280x720 @ 30fps)이
-    color+depth 동시 요청으로 지원되지 않을 수 있어 공통 fallback 조합을 순서대로 시도한다.
-    """
-    requested_mode = (int(width), int(height), int(fps))
-    fallback_modes = [
-        requested_mode,
-        (640, 480, 30),
-        (640, 480, 15),
-        (848, 480, 30),
-        (424, 240, 30),
-        (1280, 720, 15),
-    ]
-
-    seen = set()
-    candidate_modes = []
-    for mode in fallback_modes:
-        if mode not in seen:
-            seen.add(mode)
-            candidate_modes.append(mode)
-
-    errors = []
-    for mode_width, mode_height, mode_fps in candidate_modes:
-        pipeline = rs.pipeline()
-        config = rs.config()
-        config.enable_stream(
-            rs.stream.color,
-            mode_width,
-            mode_height,
-            rs.format.bgr8,
-            mode_fps
-        )
-        config.enable_stream(
-            rs.stream.depth,
-            mode_width,
-            mode_height,
-            rs.format.z16,
-            mode_fps
+    reader = RealSenseTopicReader()
+    ready = reader.wait_for_ready(require_depth=True, timeout_sec=10.0)
+    if not ready:
+        reader.destroy_node()
+        raise RuntimeError(
+            "Timed out waiting for RealSense topics. "
+            f"Expected color={reader.color_image_topic}, depth={reader.depth_image_topic}, "
+            f"camera_info={reader.camera_info_topic}"
         )
 
-        try:
-            profile = pipeline.start(config)
-            align = rs.align(rs.stream.color)
-            color_profile = profile.get_stream(rs.stream.color).as_video_stream_profile()
-            color_intrinsics = color_profile.get_intrinsics()
-            if (mode_width, mode_height, mode_fps) != requested_mode:
-                print(
-                    "Requested RealSense mode "
-                    f"{requested_mode[0]}x{requested_mode[1]} @ {requested_mode[2]}fps "
-                    f"is unavailable. Falling back to {mode_width}x{mode_height} @ {mode_fps}fps"
-                )
-            print(f"RealSense color+depth stream 시작: {mode_width}x{mode_height} @ {mode_fps}fps")
-            return pipeline, align, color_intrinsics
-        except RuntimeError as exc:
-            errors.append(f"{mode_width}x{mode_height}@{mode_fps}: {exc}")
-            try:
-                pipeline.stop()
-            except Exception:
-                pass
-
-    tried_modes = ", ".join(errors)
-    raise RuntimeError(
-        "Failed to start RealSense color+depth stream. "
-        f"Tried modes: {tried_modes}"
+    print(
+        "Subscribed to RealSense topics: "
+        f"color={reader.color_image_topic}, "
+        f"depth={reader.depth_image_topic}, "
+        f"camera_info={reader.camera_info_topic}"
     )
+    return reader, None, reader.latest_intrinsics
 
 
 def get_realsense_frames(pipeline, align):
-    """
-    RealSense color/depth frame을 정렬해서 반환
-    """
-    frames = pipeline.wait_for_frames()
-    aligned_frames = align.process(frames)
-    color_frame = aligned_frames.get_color_frame()
-    depth_frame = aligned_frames.get_depth_frame()
-
-    if not color_frame or not depth_frame:
+    """Return the latest subscribed color/depth frames."""
+    if pipeline is None:
         return None, None, None
-
-    color_image = np.asanyarray(color_frame.get_data())
-
-    return color_image, depth_frame, color_frame
+    return pipeline.snapshot()
 
 
 def check_ocr_trigger(key=None):
@@ -1681,6 +1835,7 @@ def main():
 
     try:
         while True:
+            rclpy.spin_once(pipeline, timeout_sec=0.0)
             rclpy.spin_once(robot_node, timeout_sec=0.0)
             frame, depth_frame, _ = get_realsense_frames(pipeline, align)
 
@@ -1898,6 +2053,7 @@ def main():
     finally:
         if pipeline is not None:
             pipeline.stop()
+            pipeline.destroy_node()
         cv2.destroyAllWindows()
 
         save_json(

@@ -457,6 +457,8 @@ class BookPickSequenceExecutor:
         request.position = int(position)
         request.timeout_sec = float(self.config.gripper_timeout_sec)
         stage_messages = {
+            "PREPARE_GRIPPER_VIEW": f"\n[시야 확보] 그리퍼를 카메라 시야 밖으로 이동\n→ 목표 위치: {int(position)}",
+            "PREPARE_GRIPPER_PICK_OPEN": f"\n[접근 준비] 잡기 전에 그리퍼를 기존 open 위치로 복귀\n→ 목표 위치: {int(position)}",
             "PICK_OPEN_GRIPPER": f"\n[1단계] 그리퍼 열기\n→ 목표 위치: {int(position)}",
             "PICK_SOFT_GRIP": f"\n[3단계] 1차 잡기\n→ soft grip 위치: {int(position)}",
             "PICK_OPEN_GRIPPER_2": f"\n[5단계] 다시 그리퍼 열기\n→ 목표 위치: {int(position)}",

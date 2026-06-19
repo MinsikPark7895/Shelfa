@@ -58,9 +58,11 @@ DEFAULT_EXECUTE_STAGE = "all"
 DEFAULT_MAX_STAGE_STEP_M = 0.40
 DEFAULT_MAX_TOTAL_STEP_M = 0.80
 DEFAULT_MAX_STAGE1_FORWARD_M = 0.02
-DEFAULT_MAX_STAGE3_FORWARD_M = 0.20
+DEFAULT_MAX_STAGE3_FORWARD_M = 0.40
 DEFAULT_FRONT_DIRECTION_SIGN = 1.0
 DEFAULT_STAGE1_LATERAL_SIGN = 1.0
+DEFAULT_REFINE_AFTER_STAGE1 = False
+DEFAULT_RESCAN_NO_DISPLAY = False
 DEFAULT_RESCAN_ALIGNMENT_PAYLOAD_JSON = "realtime_results/alignment_payload.json"
 DEFAULT_RESCAN_WIDTH = 640
 DEFAULT_RESCAN_HEIGHT = 480
@@ -267,6 +269,7 @@ class TfBookTargetToApproach(Node):
         self.front_direction_sign = float(args.front_direction_sign)
         self.stage1_lateral_sign = float(args.stage1_lateral_sign)
         self.refine_after_stage1 = bool(args.refine_after_stage1)
+        self.rescan_no_display = bool(args.rescan_no_display)
         self.coarse_base_source = str(args.coarse_base_source).lower()
         self.fine_base_source = str(args.fine_base_source).lower()
         self.rescan_alignment_payload_json = str(args.rescan_alignment_payload_json)
@@ -426,6 +429,7 @@ class TfBookTargetToApproach(Node):
             f"  front_direction_sign={self.front_direction_sign:.1f}\n"
             f"  stage1_lateral_sign={self.stage1_lateral_sign:.1f}\n"
             f"  refine_after_stage1={self.refine_after_stage1}\n"
+            f"  rescan_no_display={self.rescan_no_display}\n"
             f"  coarse_base_source={self.coarse_base_source}, fine_base_source={self.fine_base_source}\n"
             f"  rescan_alignment_payload_json={self.rescan_alignment_payload_json}\n"
             f"  rescan=[{self.rescan_width}, {self.rescan_height}]@{self.rescan_fps} "
@@ -458,6 +462,15 @@ class TfBookTargetToApproach(Node):
             ) from exc
         return transform_stamped_to_matrix(transform)
 
+    def _wait_for_future(self, future, timeout_sec, timeout_message):
+        done_event = threading.Event()
+        future.add_done_callback(lambda _future: done_event.set())
+
+        if done_event.wait(timeout=float(timeout_sec)):
+            return
+
+        raise RuntimeError(timeout_message)
+
     def _read_current_tcp_pose(self):
         if not self.current_posx_client.wait_for_service(timeout_sec=1.0):
             raise RuntimeError(f"Service not available: {self.current_posx_service}")
@@ -465,14 +478,11 @@ class TfBookTargetToApproach(Node):
         request = GetCurrentPosx.Request()
         request.ref = self.current_posx_ref
         future = self.current_posx_client.call_async(request)
-
-        start_time = time.monotonic()
-        while rclpy.ok() and not future.done():
-            if time.monotonic() - start_time > self.service_timeout_sec:
-                raise RuntimeError(
-                    f"{self.current_posx_service} timed out after {self.service_timeout_sec:.1f} sec"
-                )
-            time.sleep(0.05)
+        self._wait_for_future(
+            future,
+            self.service_timeout_sec,
+            f"{self.current_posx_service} timed out after {self.service_timeout_sec:.1f} sec",
+        )
 
         if future.result() is None:
             raise RuntimeError(f"{self.current_posx_service} failed: {future.exception()}")
@@ -560,8 +570,10 @@ class TfBookTargetToApproach(Node):
             str(self.rescan_height),
             "--fps",
             str(self.rescan_fps),
-            "--no-display",
+            "--skip-scan-move",
         ]
+        if self.rescan_no_display:
+            cmd.append("--no-display")
         if self.book_index_override is not None:
             cmd.extend(["--book-index", str(int(self.book_index_override))])
         elif target_title:
@@ -731,7 +743,7 @@ class TfBookTargetToApproach(Node):
         book_z = float(self.book_base_xyz[2]) if self.book_base_xyz is not None else None
         stage1_z = current_z
         stage2_z = self._resolve_stage_z(current_z, book_z, "stage2_z_pose")
-        stage3_z = float(self.safe_pre_approach_xyz_m[2])
+        stage3_z = self._resolve_stage_z(current_z, book_z, "stage3_approach_pose")
 
         raw_to_safe = safe_pre_approach - current_xyz
         raw_to_safe_decomp = self._decompose_move_vector(raw_to_safe, front)
@@ -846,8 +858,10 @@ class TfBookTargetToApproach(Node):
         if "stage3" in stage_order and abs(stage3_decomp["forward_component_m"]) > self.max_stage3_forward_m:
             self.safety_check["ok"] = False
             self.safety_check["reasons"].append(
-                "stage3 forward component "
-                f"{stage3_decomp['forward_component_m']:.3f} > max_stage3_forward_m {self.max_stage3_forward_m:.3f}"
+                "stage3 |forward component| "
+                f"{abs(stage3_decomp['forward_component_m']):.3f} > "
+                f"max_stage3_forward_m {self.max_stage3_forward_m:.3f} "
+                f"(raw={stage3_decomp['forward_component_m']:.3f})"
             )
 
         stage_pose_map = {
@@ -889,13 +903,11 @@ class TfBookTargetToApproach(Node):
             raise RuntimeError(f"Service not available: {self.move_line_service}")
 
         future = self.move_line_client.call_async(request)
-        start_time = time.monotonic()
-        while rclpy.ok() and not future.done():
-            if time.monotonic() - start_time > self.service_timeout_sec:
-                raise RuntimeError(
-                    f"{self.move_line_service} timed out after {self.service_timeout_sec:.1f} sec"
-                )
-            time.sleep(0.05)
+        self._wait_for_future(
+            future,
+            self.service_timeout_sec,
+            f"{self.move_line_service} timed out after {self.service_timeout_sec:.1f} sec",
+        )
 
         if future.result() is None:
             raise RuntimeError(f"{self.move_line_service} failed: {future.exception()}")
@@ -1235,8 +1247,15 @@ def parse_args():
     )
     parser.add_argument(
         "--refine-after-stage1",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_REFINE_AFTER_STAGE1,
         help="stage1 coarse move 후 vision rescan을 수행하고 hand-eye fine 접근을 이어서 실행합니다.",
+    )
+    parser.add_argument(
+        "--rescan-no-display",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_RESCAN_NO_DISPLAY,
+        help="stage1 이후 vision rescan 화면 표시를 끄려면 true로 설정합니다.",
     )
     parser.add_argument(
         "--coarse-base-source",

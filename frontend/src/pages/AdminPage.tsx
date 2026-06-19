@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import '../styles/AdminPage.css'
 import { apiFetch } from '../api'
+import LiveMap from '../components/LiveMap'
 
 interface UserItem {
   id: string
@@ -14,16 +15,54 @@ interface UserItem {
   active_reservations: number
 }
 
+interface BookItem {
+  id: string
+  title: string
+  author: string
+  publisher: string
+  shelf_location: string
+  status: string
+}
+
 function AdminPage() {
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState('users')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'users')
+
+  // 유저관리
   const [users, setUsers] = useState<UserItem[]>([])
   const [loading, setLoading] = useState(false)
 
+  // 도서 목록
+  const [bookList, setBookList] = useState<BookItem[] | null>(null)
+  const [bookListLoading, setBookListLoading] = useState(false)
+  const [bookListQuery, setBookListQuery] = useState(searchParams.get('q') || '')
+
+  // 도서 등록
+  const [bookLoading, setBookLoading] = useState(false)
+  const [bookStep, setBookStep] = useState<'idle' | 'type' | 'count' | 'input'>('idle')
+  const [isbnType, setIsbnType] = useState<10 | 13>(13)
+  const [bookCount, setBookCount] = useState('')
+  const [isbnList, setIsbnList] = useState<string[]>([])
+
+  // 줄거리 동기화
+  const [syncLoading, setSyncLoading] = useState(false)
+
+  // 도서 삭제 안내 모달
+  const [showDeleteNotice, setShowDeleteNotice] = useState(false)
+  const [gearOpenId, setGearOpenId] = useState<string | null>(null)
+
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem('user') || '{}')
+    const user = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} } })()
     if (user.role !== 'admin') { navigate('/home'); return }
     if (activeTab === 'users') fetchUsers()
+    if (activeTab === 'books') {
+      const q = searchParams.get('q') || ''
+      if (q) fetchBookList(q)
+    }
+    setBookStep('idle')
+    setIsbnList([])
+    setBookCount('')
   }, [activeTab])
 
   const fetchUsers = async () => {
@@ -34,7 +73,76 @@ function AdminPage() {
         const data = await res.json()
         setUsers(data.items || data || [])
       }
-    } catch { /* */ } finally { setLoading(false) }
+    } catch { alert('유저 목록을 불러오는 중 오류가 발생했습니다.') } finally { setLoading(false) }
+  }
+
+  const fetchBookList = async (query: string) => {
+    if (!query.trim()) return
+    setBookListLoading(true)
+    try {
+      const res = await apiFetch(`/books/search?query=${encodeURIComponent(query)}&limit=100`)
+      if (res.ok) {
+        const data = await res.json()
+        const sorted = (data.items || []).slice().sort((a: BookItem, b: BookItem) =>
+          a.title.localeCompare(b.title, 'ko')
+        )
+        setBookList(sorted)
+      }
+    } catch { alert('도서 검색 중 오류가 발생했습니다.') } finally { setBookListLoading(false) }
+  }
+
+  const handleSelectType = (type: 10 | 13) => {
+    setIsbnType(type)
+    setBookCount('')
+    setIsbnList([])
+    setBookStep('count')
+  }
+
+  const handleCountConfirm = () => {
+    const n = parseInt(bookCount)
+    if (!n || n < 1 || n > 50) { alert('1~50 사이로 입력해주세요.'); return }
+    setIsbnList(Array(n).fill(''))
+    setBookStep('input')
+  }
+
+  const handleIsbnChange = (idx: number, val: string) => {
+    const digits = val.replace(/\D/g, '').slice(0, isbnType)
+    setIsbnList(prev => prev.map((v, i) => i === idx ? digits : v))
+  }
+
+  const allFilled = isbnList.length > 0 && isbnList.every(v => v.length === isbnType)
+
+  const handleBulkRegister = async () => {
+    if (!allFilled) return
+    setBookLoading(true)
+    try {
+      const res = await apiFetch('/books/bulk_register', {
+        method: 'POST',
+        body: JSON.stringify({ isbns: isbnList }),
+      })
+      if (res.ok) {
+        alert('등록 완료')
+        setBookStep('idle')
+        setIsbnList([])
+        setBookCount('')
+      } else {
+        const err = await res.json().catch(() => ({}))
+        alert(err?.detail || '등록에 실패했습니다.')
+      }
+    } catch { alert('서버 연결에 실패했습니다.') } finally { setBookLoading(false) }
+  }
+
+  const handleSyncDescriptions = async () => {
+    if (!confirm('줄거리가 없는 도서를 일괄 업데이트합니다. 계속할까요?')) return
+    setSyncLoading(true)
+    try {
+      const res = await apiFetch('/books/sync-descriptions', { method: 'POST' })
+      if (res.ok) {
+        alert('줄거리 동기화가 완료되었습니다.')
+      } else {
+        alert('동기화에 실패했습니다.')
+      }
+    } catch { alert('서버 연결에 실패했습니다.') } finally { setSyncLoading(false) }
   }
 
   const formatDate = (d: string) => {
@@ -50,7 +158,7 @@ function AdminPage() {
           <path d="M8 7h6" /><path d="M8 11h4" />
         </svg>
         <span className="logo-text">XYZ 도서관</span>
-        <button className="admin-nav-btn" onClick={() => navigate('/admin')}>
+        <button className="admin-nav-btn" onClick={() => { if (activeTab === 'users') fetchUsers(); else if (activeTab === 'books') { setBookListQuery(''); setBookList(null) } }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
           </svg>
@@ -61,9 +169,9 @@ function AdminPage() {
         <h1 className="admin-title">관리</h1>
 
         <div className="tab-group">
-          <button className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}>유저관리</button>
-          <button className={`tab-btn ${activeTab === 'books' ? 'active' : ''}`} onClick={() => setActiveTab('books')}>도서관리</button>
-          <button className={`tab-btn ${activeTab === 'robot' ? 'active' : ''}`} onClick={() => setActiveTab('robot')}>로봇관리</button>
+          <button className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => { setActiveTab('users'); setSearchParams({ tab: 'users' }) }}>유저관리</button>
+          <button className={`tab-btn ${activeTab === 'books' ? 'active' : ''}`} onClick={() => { setActiveTab('books'); setSearchParams({ tab: 'books' }) }}>도서관리</button>
+          <button className={`tab-btn ${activeTab === 'robot' ? 'active' : ''}`} onClick={() => { setActiveTab('robot'); setSearchParams({ tab: 'robot' }) }}>로봇관리</button>
         </div>
 
         {activeTab === 'users' && (
@@ -102,16 +210,184 @@ function AdminPage() {
 
         {activeTab === 'books' && (
           <div className="admin-tab-content">
-            <div className="admin-empty">API 및 DB 연동 내용</div>
+
+            {/* 도서 목록 조회 */}
+            <div className="admin-section">
+              <h3 className="admin-section-title">도서 목록</h3>
+              <div className="admin-book-search-row">
+                <div className="admin-book-search-wrap">
+                  <input
+                    className="admin-book-search-input"
+                    type="text"
+                    placeholder="제목 검색"
+                    value={bookListQuery}
+                    onChange={(e) => setBookListQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { fetchBookList(bookListQuery); setSearchParams({ tab: 'books', q: bookListQuery }) } }}
+                  />
+                  {bookListQuery && (
+                    <button className="admin-search-clear-btn" onClick={() => { setBookListQuery(''); setBookList(null) }}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                <button className="admin-action-btn" onClick={() => { fetchBookList(bookListQuery); setSearchParams({ tab: 'books', q: bookListQuery }) }}>검색</button>
+              </div>
+              <div className="admin-book-result-area">
+                {bookListLoading ? (
+                  <div className="admin-loading">불러오는 중...</div>
+                ) : bookList === null ? (
+                  <div className="admin-book-empty">제목을 입력하여 검색하세요.</div>
+                ) : bookList.length === 0 ? (
+                  <div className="admin-book-empty">검색 결과가 없습니다.</div>
+                ) : (
+                  <div className="admin-book-list">
+                    {bookList.map(book => (
+                      <div className="admin-book-card" key={book.id} onClick={() => setGearOpenId(null)}>
+                        <div className="admin-book-info">
+                          <span className="admin-book-title">{book.title}</span>
+                          <span className="admin-book-author">{book.author}</span>
+                          <span className="admin-book-location">{book.shelf_location}</span>
+                        </div>
+                        <div className="admin-book-right">
+                          <span className={`admin-book-status ${book.status === 'AVAILABLE' ? 'available' : 'unavailable'}`}>
+                            {book.status === 'AVAILABLE' ? '대출가능' : '대출중'}
+                          </span>
+                          <div className="admin-gear-wrap">
+                            <button className="admin-gear-btn" onClick={(e) => { e.stopPropagation(); setGearOpenId(gearOpenId === book.id ? null : book.id) }}>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="3" />
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                              </svg>
+                            </button>
+                            {gearOpenId === book.id && (
+                              <div className="admin-gear-dropdown" onClick={(e) => e.stopPropagation()}>
+                                <button className="admin-gear-item" onClick={() => { setGearOpenId(null); navigate(`/book/${book.id}`) }}>상세페이지 이동</button>
+                                <button className="admin-gear-item" onClick={() => { setGearOpenId(null); setShowDeleteNotice(true) }}>도서 정보 수정</button>
+                                <button className="admin-gear-item admin-gear-item--danger" onClick={() => { setGearOpenId(null); setShowDeleteNotice(true) }}>도서 삭제</button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 도서 등록 */}
+            <div className="admin-section">
+              <h3 className="admin-section-title">도서 등록</h3>
+              <p className="admin-section-desc">ISBN 바코드로 도서를 등록합니다. 2007년 이후 출판 도서는 ISBN-13을 사용하세요.</p>
+
+              <div className="admin-step-box">
+                {bookStep === 'idle' && (
+                  <button className="admin-action-btn" onClick={() => setBookStep('type')}>도서 등록</button>
+                )}
+
+                {bookStep === 'type' && (
+                  <>
+                    <div className="admin-isbn-type-row">
+                      <button className="admin-isbn-type-btn" onClick={() => handleSelectType(10)}>
+                        <span className="admin-isbn-type-label">ISBN-10</span>
+                        <span className="admin-isbn-type-sub">2007년 이전 도서</span>
+                      </button>
+                      <button className="admin-isbn-type-btn" onClick={() => handleSelectType(13)}>
+                        <span className="admin-isbn-type-label">ISBN-13</span>
+                        <span className="admin-isbn-type-sub">2007년 이후 도서</span>
+                      </button>
+                    </div>
+                    <button className="admin-back-btn" onClick={() => { setBookStep('idle'); setIsbnList([]); setBookCount('') }}>이전으로</button>
+                  </>
+                )}
+
+                {bookStep === 'count' && (
+                  <>
+                    <p className="admin-section-desc">ISBN-{isbnType} 선택됨. 몇 권 등록하시겠습니까? (최대 50권)</p>
+                    <input
+                      className="admin-count-input"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="권수 입력"
+                      value={bookCount}
+                      onChange={(e) => setBookCount(e.target.value.replace(/\D/g, ''))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleCountConfirm() }}
+                    />
+                    <div className="admin-btn-row">
+                      <button className="admin-back-btn" onClick={() => setBookStep('type')}>이전으로</button>
+                      <button className="admin-action-btn" onClick={handleCountConfirm}>확인</button>
+                    </div>
+                  </>
+                )}
+
+                {bookStep === 'input' && (
+                  <>
+                    <p className="admin-section-desc">ISBN-{isbnType} ({isbnList.length}권) — {isbnType}자리 입력</p>
+                    <div className="admin-isbn-grid">
+                      {isbnList.map((val, idx) => (
+                        <input
+                          key={idx}
+                          className={`admin-isbn-field ${val.length === isbnType ? 'filled' : ''}`}
+                          type="text"
+                          placeholder={`${idx + 1}번`}
+                          value={val}
+                          onChange={(e) => handleIsbnChange(idx, e.target.value)}
+                          maxLength={isbnType}
+                        />
+                      ))}
+                    </div>
+                    <div className="admin-btn-row">
+                      <button className="admin-back-btn" onClick={() => { setBookStep('count'); setIsbnList([]) }}>이전으로</button>
+                      <button className="admin-action-btn" onClick={handleBulkRegister} disabled={!allFilled || bookLoading}>
+                        {bookLoading ? '등록 중...' : '등록하기'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* 줄거리 동기화 */}
+            <div className="admin-section">
+              <h3 className="admin-section-title">줄거리 동기화</h3>
+              <p className="admin-section-desc">줄거리가 없는 도서를 알라딘에서 일괄 업데이트합니다.</p>
+              <button className="admin-action-btn" onClick={handleSyncDescriptions} disabled={syncLoading}>
+                {syncLoading ? '동기화 중...' : '줄거리 동기화'}
+              </button>
+            </div>
           </div>
         )}
 
         {activeTab === 'robot' && (
           <div className="admin-tab-content">
-            <div className="admin-empty">API 및 DB 연동 내용</div>
+            <LiveMap />
           </div>
         )}
       </div>
+
+      {/* 도서 삭제 추후 개발 모달 */}
+      {showDeleteNotice && (
+        <div className="modal-overlay" onClick={() => setShowDeleteNotice(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close-btn" onClick={() => setShowDeleteNotice(false)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+            <div className="modal-result">
+              <div className="modal-result-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#aaa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+              </div>
+              <p className="modal-result-text">추후 개발 예정입니다.</p>
+              <button className="modal-btn-outline" onClick={() => setShowDeleteNotice(false)}>확인</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="tab-bar">
         <a className="tab-item" onClick={() => navigate('/home')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg><span className="tab-label">홈</span></a>

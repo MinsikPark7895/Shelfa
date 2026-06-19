@@ -31,7 +31,9 @@ This package keeps the gripper/camera URDF wrapper, Doosan RViz bringup wrapper,
 - `doosan_realsense_handeye/realtime_yolo_paddle_ocr.py`
 - `doosan_realsense_handeye/vision_pipeline_utils.py`
 - `doosan_realsense_handeye/book_scan_after_alignment.py`
+- `doosan_realsense_handeye/book_mission_state_machine.py`
 - `config/handeye_servo.yaml`
+- `config/book_mission_state_machine.yaml`
 - `launch/simple_aruco_marker_tf_publisher.launch.py`
 - `launch/aruco_handeye_target_tf.launch.py`
 - `launch/handeye_sample_collector.launch.py`
@@ -40,6 +42,7 @@ This package keeps the gripper/camera URDF wrapper, Doosan RViz bringup wrapper,
 - `launch/align_to_marker_preview.launch.py`
 - `launch/object_to_base_transformer.launch.py`
 - `launch/move_to_approach.launch.py`
+- `launch/book_mission_state_machine.launch.py`
 
 The old keyboard Servo test code is intentionally not included in this release.
 
@@ -57,17 +60,15 @@ The old keyboard Servo test code is intentionally not included in this release.
 - RealSense ROS wrapper:
   - `realsense2_camera`
 - Separate ArUco TF publisher:
-  - expected marker frame: `aruco_marker_6`
+  - expected marker frame for the current mission flow: `aruco_marker_0`
 
 Expected TF chain:
 
 ```text
 base_link
 -> ... -> link_6 -> tool0
--> camera_link
--> camera_color_frame
 -> camera_color_optical_frame
--> aruco_marker_6
+-> aruco_marker_0
 ```
 
 ## Build
@@ -82,6 +83,160 @@ cd ~/ros2_ws
 colcon build --symlink-install --packages-select doosan_realsense_handeye
 source install/setup.bash
 ```
+
+## Current Runtime Startup Order
+
+`book_mission_state_machine` does not own the robot, camera, gripper, or marker
+publisher by itself. Start the following nodes in separate terminals before
+running the mission node.
+
+Use the workspace setup in every terminal:
+
+```bash
+cd /home/dakae/ros2_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+```
+
+### 1. Doosan Robot Bringup
+
+This starts the Doosan E0509 control stack and publishes the robot TF tree.
+For the current lab network, the commonly used controller host is
+`192.168.137.100`. Replace it if the robot IP is different.
+
+```bash
+ros2 launch doosan_realsense_handeye dsr_bringup2_rviz_gripper_camera.launch.py \
+  host:=192.168.137.100 \
+  rt_host:=192.168.137.50 \
+  mode:=real \
+  model:=e0509 \
+  name:=dsr01
+```
+
+Quick checks:
+
+```bash
+ros2 service list | grep /dsr01/motion
+ros2 topic echo /dsr01/joint_states --once
+```
+
+### 2. RH-P12 Gripper TCP Bridge
+
+The mission node talks to `/gripper_service/*`. Keep this bridge running if
+gripper control is enabled.
+
+```bash
+ros2 launch dsr_gripper_tcp gripper_service_node.launch.py \
+  controller_host:=192.168.137.100 \
+  namespace:=dsr01 \
+  service_prefix:=dsr_controller2
+```
+
+Quick checks:
+
+```bash
+ros2 service list | grep /gripper_service
+ros2 topic echo /gripper_service/state --once
+```
+
+### 3. RealSense Camera Node
+
+The vision pipeline subscribes to RealSense topics. It no longer opens the
+camera with `pyrealsense2` directly.
+
+```bash
+ros2 launch realsense2_camera rs_launch.py \
+  enable_color:=true \
+  enable_depth:=true \
+  align_depth.enable:=true \
+  publish_tf:=true \
+  rgb_camera.color_profile:=1280x720x30 \
+  depth_module.depth_profile:=1280x720x30
+```
+
+Required topics:
+
+```bash
+ros2 topic list | grep camera
+ros2 topic echo /camera/camera/color/camera_info --once
+```
+
+The mission expects these topics by default:
+
+- `/camera/camera/color/image_raw`
+- `/camera/camera/color/camera_info`
+- `/camera/camera/aligned_depth_to_color/image_raw`
+
+### 4. Hand-Eye Static TF
+
+This connects the robot TF tree to the RealSense optical frame. Without this
+bridge, alignment can detect the marker but cannot save a base-referenced
+payload.
+
+```bash
+ros2 run tf2_ros static_transform_publisher \
+  -0.01151140132331922 \
+  -0.04068446401037196 \
+  0.06598386871074707 \
+  -0.0004988115704339 \
+  0.01053595856067635 \
+  0.9999443259620144 \
+  -0.0002995673497136527 \
+  link_6 \
+  camera_color_optical_frame
+```
+
+Quick check:
+
+```bash
+ros2 run tf2_ros tf2_echo base_link camera_color_optical_frame
+```
+
+### 5. ArUco Marker TF Publisher
+
+The current mission uses marker id `0` and frame `aruco_marker_0`.
+
+```bash
+ros2 run doosan_realsense_handeye simple_aruco_marker_tf_publisher --ros-args \
+  -p marker_id:=0 \
+  -p child_frame:=aruco_marker_0 \
+  -p parent_frame:=camera_color_optical_frame \
+  -p image_topic:=/camera/camera/color/image_raw \
+  -p camera_info_topic:=/camera/camera/color/camera_info
+```
+
+Quick check:
+
+```bash
+ros2 run tf2_ros tf2_echo camera_color_optical_frame aruco_marker_0
+```
+
+### 6. Mission State Machine
+
+Dry-run launch, no real robot motion:
+
+```bash
+ros2 launch doosan_realsense_handeye book_mission_state_machine.launch.py
+```
+
+Manual stepping with real robot motion. Each major state waits for Enter:
+
+```bash
+ros2 run doosan_realsense_handeye book_mission_state_machine \
+  --ros-args \
+  -p dry_run:=false \
+  -p auto_run:=false \
+  -p alignment_dry_run:=false \
+  -p alignment_auto_run:=false
+```
+
+Useful runtime outputs:
+
+- `realtime_results/alignment_payload.json`
+- `realtime_results/book_scan_result.json`
+- `realtime_results/target_book_lock.json`
+- `realtime_results/mission_state_trace.json`
+- `realtime_results/mission_result.json`
 
 ## YOLO Book Spine Model
 
@@ -103,23 +258,40 @@ ls -lh runs/obb/runs/obb/book_spine_v1/weights/best.pt
 
 ## 1. Start RealSense
 
-RealSense TF publishing must be disabled because the camera TF is provided by the robot URDF.
+Start the external RealSense node first. This package now subscribes to the published image
+topics instead of opening the camera device itself.
+
+For the current mission flow, run the same RealSense command shown in
+`Current Runtime Startup Order`. The important part is that color, aligned
+depth, and camera info topics are available.
 
 ```bash
 ros2 launch realsense2_camera rs_launch.py \
   enable_color:=true \
   enable_depth:=true \
   align_depth.enable:=true \
-  enable_sync:=true \
-  publish_tf:=false
+  publish_tf:=true \
+  rgb_camera.color_profile:=1280x720x30 \
+  depth_module.depth_profile:=1280x720x30
 ```
+
+The book-scan pipeline expects:
+
+- `/camera/camera/color/image_raw`
+- `/camera/camera/color/camera_info`
+- `/camera/camera/aligned_depth_to_color/image_raw`
 
 ## 2. Start Doosan RViz Bringup With Custom URDF
 
 This launch keeps the Doosan namespace/controller/RViz flow but uses `e0509_gripper_camera.urdf.xacro`.
 
 ```bash
-ros2 launch doosan_realsense_handeye dsr_bringup2_rviz_gripper_camera.launch.py host:=<ROBOT_IP>
+ros2 launch doosan_realsense_handeye dsr_bringup2_rviz_gripper_camera.launch.py \
+  host:=192.168.137.100 \
+  rt_host:=192.168.137.50 \
+  mode:=real \
+  model:=e0509 \
+  name:=dsr01
 ```
 
 Useful checks:
@@ -133,35 +305,42 @@ ros2 run tf2_tools view_frames
 ## 3. Start ArUco TF Publisher
 
 This package includes a small image-based ArUco TF publisher that subscribes to
-`/camera/camera/color/image_raw` and `/camera/camera/color/camera_info`, detects
-marker id 6, and publishes `camera_color_optical_frame -> aruco_marker_6`.
+`/camera/camera/color/image_raw` and `/camera/camera/color/camera_info`.
+The current mission flow detects marker id `0` and publishes
+`camera_color_optical_frame -> aruco_marker_0`.
 
 Run it directly:
 
 ```bash
-ros2 run doosan_realsense_handeye simple_aruco_marker_tf_publisher
+ros2 run doosan_realsense_handeye simple_aruco_marker_tf_publisher --ros-args \
+  -p marker_id:=0 \
+  -p child_frame:=aruco_marker_0 \
+  -p parent_frame:=camera_color_optical_frame \
+  -p image_topic:=/camera/camera/color/image_raw \
+  -p camera_info_topic:=/camera/camera/color/camera_info
 ```
 
-Or via launch:
-
-```bash
-ros2 launch doosan_realsense_handeye simple_aruco_marker_tf_publisher.launch.py
-```
+For the current mission flow, prefer the explicit `ros2 run` command above so
+`marker_id`, `child_frame`, image topic, and camera info topic are all fixed.
 
 Optional display:
 
 ```bash
 ros2 run doosan_realsense_handeye simple_aruco_marker_tf_publisher --ros-args \
+  -p marker_id:=0 \
+  -p child_frame:=aruco_marker_0 \
+  -p parent_frame:=camera_color_optical_frame \
   -p show_display:=true
 ```
 
 ```bash
-ros2 run tf2_ros tf2_echo camera_color_optical_frame aruco_marker_6
+ros2 run tf2_ros tf2_echo camera_color_optical_frame aruco_marker_0
 ```
 
 ## 3.5 Hand-Eye Bridge For Base-Referenced Target Frames
 
-`aruco_handeye_target_tf` merges the current package's `camera -> aruco_marker_6` TF with the
+`aruco_handeye_target_tf` is a reference/legacy helper that merges a
+`camera -> aruco_marker_*` TF with the
 hand-eye calibration result `T_tool_camera` and the live robot TF `base_link -> link_6`.
 
 It publishes:
@@ -500,7 +679,61 @@ Notes:
 - `book_index` is per-scan and not stable across runs.
 - OCR input crops are saved by default for later inspection.
 - Use `--ocr-max-books` or `--disable-ocr` if OCR latency is too high.
-- `realtime_yolo_paddle_ocr.py` provides the shared RealSense/YOLO/OCR utility code used by this scan pipeline.
+- `realtime_yolo_paddle_ocr.py` provides the shared subscriber-based camera/YOLO/OCR utility code used by this scan pipeline.
+
+## Book Mission State Machine
+
+`book_mission_state_machine` runs the full flow as one sequential mission:
+
+```text
+START
+-> MOVE_HOME
+-> PREPARE_GRIPPER_VIEW
+-> ALIGN_MARKER
+-> DETECT_BOOK
+-> PREPARE_GRIPPER_PICK_OPEN
+-> MOVE_TO_BOOK_20CM_OFFSET
+-> LOWER_CAMERA_FOR_VERIFY
+-> VERIFY_BOOK_AGAIN
+-> ALIGN_BOOK_LATERAL
+-> MOVE_LEFT_1CM
+-> SET_GRIPPER_600_AFTER_ALIGN
+-> EXPERIMENTAL_PICK_CYCLES
+-> PICK_BOOK
+-> MOVE_TO_PLACE_POSE
+-> RELEASE_BOOK
+-> RETURN_HOME
+-> DONE
+```
+
+It reuses the existing alignment, scan, and pick helpers, and writes progress to:
+
+- `realtime_results/mission_state_trace.json`
+- `realtime_results/mission_result.json`
+
+Run it with the default config:
+
+```bash
+ros2 launch doosan_realsense_handeye book_mission_state_machine.launch.py
+```
+
+Manual stepping with real robot motion:
+
+```bash
+ros2 run doosan_realsense_handeye book_mission_state_machine \
+  --ros-args \
+  -p dry_run:=false \
+  -p auto_run:=false \
+  -p alignment_dry_run:=false \
+  -p alignment_auto_run:=false
+```
+
+Override the designated place pose as needed:
+
+```bash
+ros2 run doosan_realsense_handeye book_mission_state_machine --ros-args \
+  -p place_joint_pose_deg:="[10.0, 0.0, 90.0, 0.0, 90.0, 0.0]"
+```
 
 ## Reference Only: Book Visual Servo Align
 
