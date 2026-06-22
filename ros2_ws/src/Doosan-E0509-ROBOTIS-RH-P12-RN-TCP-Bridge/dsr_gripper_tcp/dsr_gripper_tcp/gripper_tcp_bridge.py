@@ -542,6 +542,17 @@ class DoosanGripperTcpBridge:
             g_sock = None
             g_ready = False
 
+            def modbus_send_make(data):
+                crc = 0xFFFF
+                for b in bytearray(data):
+                    crc ^= b
+                    for _ in range(8):
+                        if crc & 1:
+                            crc = (crc >> 1) ^ 0xA001
+                        else:
+                            crc = crc >> 1
+                return bytearray(data) + bytearray([crc & 0xFF, (crc >> 8) & 0xFF])
+
             def modbus_set_slaveid(slaveid):
                 global g_slaveid
                 g_slaveid = slaveid
