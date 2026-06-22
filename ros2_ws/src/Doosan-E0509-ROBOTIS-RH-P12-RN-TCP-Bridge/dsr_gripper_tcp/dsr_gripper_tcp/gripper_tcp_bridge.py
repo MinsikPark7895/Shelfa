@@ -560,36 +560,38 @@ class DoosanGripperTcpBridge:
             g_sock = None
             g_ready = False
 
+            def compute_crc(data_list):
+                crc = 0xFFFF
+                for b in data_list:
+                    crc ^= b
+                    for _ in range(8):
+                        if crc & 1:
+                            crc = (crc >> 1) ^ 0xA001
+                        else:
+                            crc = crc >> 1
+                return data_list + [crc & 0xFF, (crc >> 8) & 0xFF]
+
             def modbus_set_slaveid(slaveid):
                 global g_slaveid
                 g_slaveid = slaveid
 
             def modbus_fc03(startaddress, cnt):
                 global g_slaveid
-                data = (g_slaveid).to_bytes(1, byteorder='big')
-                data += (3).to_bytes(1, byteorder='big')
-                data += (startaddress).to_bytes(2, byteorder='big')
-                data += (cnt).to_bytes(2, byteorder='big')
-                return modbus_send_make(data)
+                data = [g_slaveid, 3, (startaddress >> 8) & 0xFF, startaddress & 0xFF, (cnt >> 8) & 0xFF, cnt & 0xFF]
+                return compute_crc(data)
 
             def modbus_fc06(address, value):
                 global g_slaveid
-                data = (g_slaveid).to_bytes(1, byteorder='big')
-                data += (6).to_bytes(1, byteorder='big')
-                data += (address).to_bytes(2, byteorder='big')
-                data += (value).to_bytes(2, byteorder='big')
-                return modbus_send_make(data)
+                data = [g_slaveid, 6, (address >> 8) & 0xFF, address & 0xFF, (value >> 8) & 0xFF, value & 0xFF]
+                return compute_crc(data)
 
             def modbus_fc16(startaddress, cnt, valuelist):
                 global g_slaveid
-                data = (g_slaveid).to_bytes(1, byteorder='big')
-                data += (16).to_bytes(1, byteorder='big')
-                data += (startaddress).to_bytes(2, byteorder='big')
-                data += (cnt).to_bytes(2, byteorder='big')
-                data += (2 * cnt).to_bytes(1, byteorder='big')
-                for i in range(0, cnt):
-                    data += (valuelist[i]).to_bytes(2, byteorder='big')
-                return modbus_send_make(data)
+                data = [g_slaveid, 16, (startaddress >> 8) & 0xFF, startaddress & 0xFF, (cnt >> 8) & 0xFF, cnt & 0xFF, (2 * cnt) & 0xFF]
+                for i in range(cnt):
+                    val = valuelist[i]
+                    data.extend([(val >> 8) & 0xFF, val & 0xFF])
+                return compute_crc(data)
 
             def u32_to_words(value):
                 low_word = value & 0xFFFF
