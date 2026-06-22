@@ -590,7 +590,7 @@ class DoosanGripperTcpBridge:
                             crc = (crc >> 1) ^ 0xA001
                         else:
                             crc = crc >> 1
-                return bytes(bytearray(data) + bytearray([crc & 0xFF, (crc >> 8) & 0xFF]))
+                return list(bytearray(data)) + [crc & 0xFF, (crc >> 8) & 0xFF]
 
             def modbus_set_slaveid(slaveid):
                 global g_slaveid
@@ -642,7 +642,10 @@ class DoosanGripperTcpBridge:
                 while elapsed_ms <= deadline_ms:
                     size, val = flange_serial_read(0.05)
                     if size > 0 and val is not None:
-                        buffer += val
+                        if type(val) is list:
+                            buffer += bytes(bytearray(val))
+                        else:
+                            buffer += val
 
                         if expected_length > 0 and len(buffer) >= expected_length:
                             return True, buffer[0:expected_length]
@@ -763,6 +766,8 @@ class DoosanGripperTcpBridge:
                 global g_ready
                 g_ready = False
 
+                flange_serial_close()
+                wait(0.3)
                 open_serial_port()
 
                 # Some grippers need a moment to wake up after the serial
