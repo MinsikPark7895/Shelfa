@@ -547,26 +547,6 @@ class DoosanGripperTcpBridge:
             ADDR_PROFILE_ACCELERATION = 278
             ADDR_PROFILE_VELOCITY = 280
             ADDR_GOAL_POSITION = 282
-            import struct
-            def to_bytes(val, length):
-                if length == 1:
-                    return struct.pack('>B', val & 0xFF)
-                elif length == 2:
-                    return struct.pack('>H', val & 0xFFFF)
-                elif length == 4:
-                    return struct.pack('>I', val & 0xFFFFFFFF)
-                return b''
-            
-            def from_bytes(data, signed):
-                length = len(data)
-                if length == 1:
-                    fmt = '>b' if signed else '>B'
-                elif length == 2:
-                    fmt = '>h' if signed else '>H'
-                elif length == 4:
-                    fmt = '>i' if signed else '>I'
-                return struct.unpack(fmt, data)[0]
-
             ADDR_MOVING_STATUS = 285
             ADDR_PRESENT_CURRENT = 287
             ADDR_PRESENT_VELOCITY = 288
@@ -580,7 +560,6 @@ class DoosanGripperTcpBridge:
             g_sock = None
             g_ready = False
 
-
             def modbus_send_make(data):
                 crc = 0xFFFF
                 for b in bytearray(data):
@@ -590,7 +569,7 @@ class DoosanGripperTcpBridge:
                             crc = (crc >> 1) ^ 0xA001
                         else:
                             crc = crc >> 1
-                return list(bytearray(data)) + [crc & 0xFF, (crc >> 8) & 0xFF]
+                return bytearray(data) + bytearray([crc & 0xFF, (crc >> 8) & 0xFF])
 
             def modbus_set_slaveid(slaveid):
                 global g_slaveid
@@ -598,29 +577,29 @@ class DoosanGripperTcpBridge:
 
             def modbus_fc03(startaddress, cnt):
                 global g_slaveid
-                data = to_bytes(g_slaveid, 1)
-                data += to_bytes(3, 1)
-                data += to_bytes(startaddress, 2)
-                data += to_bytes(cnt, 2)
+                data = (g_slaveid).to_bytes(1, byteorder='big')
+                data += (3).to_bytes(1, byteorder='big')
+                data += (startaddress).to_bytes(2, byteorder='big')
+                data += (cnt).to_bytes(2, byteorder='big')
                 return modbus_send_make(data)
 
             def modbus_fc06(address, value):
                 global g_slaveid
-                data = to_bytes(g_slaveid, 1)
-                data += to_bytes(6, 1)
-                data += to_bytes(address, 2)
-                data += to_bytes(value, 2)
+                data = (g_slaveid).to_bytes(1, byteorder='big')
+                data += (6).to_bytes(1, byteorder='big')
+                data += (address).to_bytes(2, byteorder='big')
+                data += (value).to_bytes(2, byteorder='big')
                 return modbus_send_make(data)
 
             def modbus_fc16(startaddress, cnt, valuelist):
                 global g_slaveid
-                data = to_bytes(g_slaveid, 1)
-                data += to_bytes(16, 1)
-                data += to_bytes(startaddress, 2)
-                data += to_bytes(cnt, 2)
-                data += to_bytes(2 * cnt, 1)
+                data = (g_slaveid).to_bytes(1, byteorder='big')
+                data += (16).to_bytes(1, byteorder='big')
+                data += (startaddress).to_bytes(2, byteorder='big')
+                data += (cnt).to_bytes(2, byteorder='big')
+                data += (2 * cnt).to_bytes(1, byteorder='big')
                 for i in range(0, cnt):
-                    data += to_bytes(valuelist[i], 2)
+                    data += (valuelist[i]).to_bytes(2, byteorder='big')
                 return modbus_send_make(data)
 
             def u32_to_words(value):
@@ -642,10 +621,7 @@ class DoosanGripperTcpBridge:
                 while elapsed_ms <= deadline_ms:
                     size, val = flange_serial_read(0.05)
                     if size > 0 and val is not None:
-                        if type(val) is list:
-                            buffer += bytes(bytearray(val))
-                        else:
-                            buffer += val
+                        buffer += val
 
                         if expected_length > 0 and len(buffer) >= expected_length:
                             return True, buffer[0:expected_length]
@@ -678,24 +654,24 @@ class DoosanGripperTcpBridge:
             def send_response(command, seq, payload):
                 global g_sock
                 tx_data = b"GP"
-                tx_data += to_bytes(1, 1)
-                tx_data += to_bytes(command, 1)
-                tx_data += to_bytes(seq, 2)
-                tx_data += to_bytes(len(payload), 2)
+                tx_data += (1).to_bytes(1, byteorder='big')
+                tx_data += (command).to_bytes(1, byteorder='big')
+                tx_data += (seq).to_bytes(2, byteorder='big')
+                tx_data += (len(payload)).to_bytes(2, byteorder='big')
                 tx_data += payload
                 server_socket_write(g_sock, tx_data)
 
             def encode_state_payload(status, moving, moving_status, present_current, present_temperature, present_velocity, present_position):
                 global g_ready
                 torque_flag = 1 if g_ready else 0
-                payload = to_bytes(status, 1)
-                payload += to_bytes(moving & 0xFF, 1)
-                payload += to_bytes(moving_status & 0xFF, 1)
-                payload += to_bytes(torque_flag, 1)
-                payload += to_bytes(present_current & 0xFFFF, 2)
-                payload += to_bytes(present_temperature & 0xFFFF, 2)
-                payload += to_bytes(present_velocity & 0xFFFFFFFF, 4)
-                payload += to_bytes(present_position & 0xFFFFFFFF, 4)
+                payload = (status).to_bytes(1, byteorder='big')
+                payload += (moving & 0xFF).to_bytes(1, byteorder='big')
+                payload += (moving_status & 0xFF).to_bytes(1, byteorder='big')
+                payload += (torque_flag).to_bytes(1, byteorder='big')
+                payload += (present_current & 0xFFFF).to_bytes(2, byteorder='big')
+                payload += (present_temperature & 0xFFFF).to_bytes(2, byteorder='big')
+                payload += (present_velocity & 0xFFFFFFFF).to_bytes(4, byteorder='big')
+                payload += (present_position & 0xFFFFFFFF).to_bytes(4, byteorder='big')
                 return payload
 
             def read_state():
@@ -715,14 +691,14 @@ class DoosanGripperTcpBridge:
 
                 moving = moving_reg[1]
                 moving_status = moving_reg[0]
-                present_current = from_bytes(current_reg, True)
+                present_current = int.from_bytes(current_reg, byteorder='big', signed=True)
 
-                velocity_low = from_bytes(velocity_reg[0:2], False)
-                velocity_high = from_bytes(velocity_reg[2:4], False)
+                velocity_low = int.from_bytes(velocity_reg[0:2], byteorder='big', signed=False)
+                velocity_high = int.from_bytes(velocity_reg[2:4], byteorder='big', signed=False)
                 present_velocity = words_to_i32(velocity_low, velocity_high)
 
-                position_low = from_bytes(position_reg[0:2], False)
-                position_high = from_bytes(position_reg[2:4], False)
+                position_low = int.from_bytes(position_reg[0:2], byteorder='big', signed=False)
+                position_high = int.from_bytes(position_reg[2:4], byteorder='big', signed=False)
                 present_position = words_to_i32(position_low, position_high)
 
                 present_temperature = temperature_reg[1]
@@ -765,9 +741,6 @@ class DoosanGripperTcpBridge:
             def initialize_gripper():
                 global g_ready
                 g_ready = False
-
-                flange_serial_close()
-                wait(0.3)
                 open_serial_port()
 
                 # Some grippers need a moment to wake up after the serial
@@ -802,7 +775,6 @@ class DoosanGripperTcpBridge:
             def close_gripper():
                 global g_ready
                 g_ready = False
-
                 # Best-effort torque off so the next session starts clean.
                 flange_serial_write(modbus_fc06(ADDR_TORQUE_ENABLE, 0))
                 ok, val = recv_modbus_response(0.2, 8)
@@ -842,7 +814,7 @@ class DoosanGripperTcpBridge:
                 global g_goal_current
                 global g_ready
                 if len(payload) >= 2:
-                    g_goal_current = from_bytes(payload[0:2], False)
+                    g_goal_current = int.from_bytes(payload[0:2], byteorder='big', signed=False)
 
                 if g_ready is False:
                     ok = initialize_gripper()
@@ -877,9 +849,9 @@ class DoosanGripperTcpBridge:
                     send_response(command, seq, encode_state_payload(STATUS_BAD_PACKET, 0, 0, 0, 0, 0, 0))
                     return
 
-                g_goal_current = from_bytes(payload[0:2], False)
-                g_profile_velocity = from_bytes(payload[2:6], False)
-                g_profile_acceleration = from_bytes(payload[6:10], False)
+                g_goal_current = int.from_bytes(payload[0:2], byteorder='big', signed=False)
+                g_profile_velocity = int.from_bytes(payload[2:6], byteorder='big', signed=False)
+                g_profile_acceleration = int.from_bytes(payload[6:10], byteorder='big', signed=False)
 
                 # Stash the values regardless of torque state; they will be
                 # applied to hardware on the next torque-on or move command.
@@ -929,7 +901,7 @@ class DoosanGripperTcpBridge:
                     send_response(command, seq, encode_state_payload(STATUS_BAD_PACKET, 0, 0, 0, 0, 0, 0))
                     return
 
-                enable_value = from_bytes(payload[0:2], False)
+                enable_value = int.from_bytes(payload[0:2], byteorder='big', signed=False)
                 enable = enable_value != 0
 
                 if enable:
@@ -952,7 +924,6 @@ class DoosanGripperTcpBridge:
                 flange_serial_write(modbus_fc06(ADDR_TORQUE_ENABLE, 0))
                 ok, val = recv_modbus_response(0.3, 8)
                 g_ready = False
-
                 if ok is False:
                     send_response(command, seq, encode_state_payload(STATUS_IO_ERROR, 0, 0, 0, 0, 0, 0))
                     return
@@ -973,8 +944,8 @@ class DoosanGripperTcpBridge:
                     send_response(command, seq, encode_state_payload(STATUS_BAD_PACKET, 0, 0, 0, 0, 0, 0))
                     return
 
-                goal_position = from_bytes(payload[0:4], False)
-                timeout_ms = from_bytes(payload[4:8], False)
+                goal_position = int.from_bytes(payload[0:4], byteorder='big', signed=False)
+                timeout_ms = int.from_bytes(payload[4:8], byteorder='big', signed=False)
 
                 if goal_position < 0 or goal_position > 1150:
                     send_response(command, seq, encode_state_payload(STATUS_RANGE_ERROR, 0, 0, 0, 0, 0, 0))
@@ -1027,8 +998,8 @@ class DoosanGripperTcpBridge:
 
                 version = header[2]
                 command = header[3]
-                seq = from_bytes(header[4:6], False)
-                payload_size = from_bytes(header[6:8], False)
+                seq = int.from_bytes(header[4:6], byteorder='big', signed=False)
+                payload_size = int.from_bytes(header[6:8], byteorder='big', signed=False)
 
                 if version != 1:
                     send_response(command, seq, encode_state_payload(STATUS_BAD_PACKET, 0, 0, 0, 0, 0, 0))
