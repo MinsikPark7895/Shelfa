@@ -590,7 +590,7 @@ class DoosanGripperTcpBridge:
                             crc = (crc >> 1) ^ 0xA001
                         else:
                             crc = crc >> 1
-                return bytearray(data) + bytearray([crc & 0xFF, (crc >> 8) & 0xFF])
+                return str(bytearray(data) + bytearray([crc & 0xFF, (crc >> 8) & 0xFF]))
 
             def modbus_set_slaveid(slaveid):
                 global g_slaveid
