@@ -217,7 +217,7 @@ class MasterOrchestratorNode(Node):
         
         # 팀원 환경에서 ros2 service call을 직접 실행 (TF 오염 방지를 위해 Domain 26 격리 유지)
         pick_cmd = (
-            "export AMENT_TRACE_SETUP_FILES= && "
+            "set +u && "
             "source /opt/ros/humble/setup.bash && "
             f"source /home/{TEAMMATE_PC_USER}/ros2_ws/install/setup.bash && "
             "export ROS_DOMAIN_ID=26 && "
@@ -264,7 +264,7 @@ class MasterOrchestratorNode(Node):
         self.get_logger().info(f"🦾 [Phase 4] SSH로 팀원 컴퓨터({TEAMMATE_PC_IP})에 보관함 넣기 서비스 콜 전송...")
         
         place_cmd = (
-            "export AMENT_TRACE_SETUP_FILES= && "
+            "set +u && "
             "source /opt/ros/humble/setup.bash && "
             f"source /home/{TEAMMATE_PC_USER}/ros2_ws/install/setup.bash && "
             "export ROS_DOMAIN_ID=26 && "
