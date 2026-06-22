@@ -229,9 +229,8 @@ class MasterOrchestratorNode(Node):
             process1 = await asyncio.create_subprocess_exec(
                 "ssh",
                 "-o", "StrictHostKeyChecking=no",   # 최초 접속 시 확인 프롬프트 스킵
-                "-o", "BatchMode=yes",               # 비밀번호 입력 프롬프트 없이 키 인증만 사용
                 f"{TEAMMATE_PC_USER}@{TEAMMATE_PC_IP}",
-                "bash", "-c", pick_cmd,
+                pick_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -276,9 +275,8 @@ class MasterOrchestratorNode(Node):
             process2 = await asyncio.create_subprocess_exec(
                 "ssh",
                 "-o", "StrictHostKeyChecking=no",
-                "-o", "BatchMode=yes",
                 f"{TEAMMATE_PC_USER}@{TEAMMATE_PC_IP}",
-                "bash", "-c", place_cmd,
+                place_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
