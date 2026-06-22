@@ -71,9 +71,7 @@ start_node "RealSense 카메라" \
     enable_color:=true \
     enable_depth:=true \
     align_depth.enable:=true \
-    publish_tf:=true \
-    rgb_camera.color_profile:=1280x720x30 \
-    depth_module.depth_profile:=1280x720x30
+    publish_tf:=true
 
 start_node "그리퍼 서비스" \
   ros2 launch dsr_gripper_tcp gripper_service_node.launch.py \
@@ -100,23 +98,21 @@ start_node "ArUco marker 2 TF 발행기" \
 
 echo
 echo "========================================="
-echo "필수 노드가 실행 중입니다."
-echo "로봇 주변 안전을 확인한 뒤에만 mission 노드를 실행하세요."
-echo "새 터미널을 열고 아래 명령을 실행하세요:"
-echo
-cat <<'EOF'
-cd "${ROS_WS}"
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-export ROS_DOMAIN_ID=26
+echo "하드웨어 노드 실행이 완료되었습니다."
+echo "이제 서비스 콜을 받을 '미션 서버'를 백그라운드에서 실행합니다."
+echo "========================================="
 
-# 서비스 서버 상시 대기 가동 (계약/테스트 모드가 필요하면 dry_run:=true 사용)
-ros2 launch doosan_realsense_handeye book_mission_service_server.launch.py \
-  dry_run:=false \
-  auto_run:=true
-EOF
+start_node "미션 서비스 서버" \
+  ros2 launch doosan_realsense_handeye book_mission_service_server.launch.py \
+    dry_run:=false \
+    dry_run_contract_mode:=false \
+    auto_run:=true
+
 echo
-echo "필수 노드를 종료하려면 이 터미널에서 Ctrl+C를 누르세요."
+echo "========================================="
+echo "✅ 모든 시스템과 미션 서버가 정상적으로 실행 중입니다!"
+echo "이제 다른 터미널에서 쉘 스크립트를 통해 서비스 콜 명령을 내릴 수 있습니다."
+echo "종료하려면 이 터미널에서 Ctrl+C를 누르세요."
 echo "========================================="
 
 wait

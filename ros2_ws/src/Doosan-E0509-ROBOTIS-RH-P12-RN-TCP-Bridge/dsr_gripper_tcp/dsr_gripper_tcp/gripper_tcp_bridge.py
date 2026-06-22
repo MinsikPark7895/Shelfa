@@ -578,12 +578,12 @@ class DoosanGripperTcpBridge:
             def modbus_fc03(startaddress, cnt):
                 global g_slaveid
                 data = [g_slaveid, 3, (startaddress >> 8) & 0xFF, startaddress & 0xFF, (cnt >> 8) & 0xFF, cnt & 0xFF]
-                return compute_crc(data)
+                return bytes(bytearray(compute_crc(data)))
 
             def modbus_fc06(address, value):
                 global g_slaveid
                 data = [g_slaveid, 6, (address >> 8) & 0xFF, address & 0xFF, (value >> 8) & 0xFF, value & 0xFF]
-                return compute_crc(data)
+                return bytes(bytearray(compute_crc(data)))
 
             def modbus_fc16(startaddress, cnt, valuelist):
                 global g_slaveid
@@ -591,7 +591,7 @@ class DoosanGripperTcpBridge:
                 for i in range(cnt):
                     val = valuelist[i]
                     data.extend([(val >> 8) & 0xFF, val & 0xFF])
-                return compute_crc(data)
+                return bytes(bytearray(compute_crc(data)))
 
             def u32_to_words(value):
                 low_word = value & 0xFFFF
@@ -607,7 +607,7 @@ class DoosanGripperTcpBridge:
             def recv_modbus_response(timeout, expected_length=0):
                 deadline_ms = int(timeout * 1000)
                 elapsed_ms = 0
-                buffer = b""
+                buffer = bytearray()
 
                 while elapsed_ms <= deadline_ms:
                     size, val = flange_serial_read(0.05)
@@ -634,7 +634,7 @@ class DoosanGripperTcpBridge:
 
             def tcp_read_exact(size):
                 global g_sock
-                data = b""
+                data = bytearray()
                 while len(data) < size:
                     res, chunk = server_socket_read(g_sock, size - len(data), 1.0)
                     if res < 0:
