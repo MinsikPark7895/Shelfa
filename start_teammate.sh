@@ -5,7 +5,9 @@ echo "========================================="
 echo "Shelfa 책 감지-집기 실행 전 필수 노드 시작"
 echo "========================================="
 
-SHELFA_ROOT="${SHELFA_ROOT:-/home/dakae/ros2_ws/src/Shelfa}"
+# 스크립트가 실행되는 현재 디렉토리를 절대 경로로 자동 추출 (어떤 컴퓨터든 호환 가능)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SHELFA_ROOT="${SHELFA_ROOT:-${SCRIPT_DIR}}"
 ROS_WS="${ROS_WS:-${SHELFA_ROOT}/ros2_ws}"
 ROBOT_HOST="${ROBOT_HOST:-110.120.1.56}"
 ROBOT_PORT="${ROBOT_PORT:-12345}"
@@ -103,7 +105,7 @@ echo "로봇 주변 안전을 확인한 뒤에만 mission 노드를 실행하세
 echo "새 터미널을 열고 아래 명령을 실행하세요:"
 echo
 cat <<'EOF'
-cd /home/dakae/ros2_ws/src/Shelfa/ros2_ws
+cd "${ROS_WS}"
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 export ROS_DOMAIN_ID=26

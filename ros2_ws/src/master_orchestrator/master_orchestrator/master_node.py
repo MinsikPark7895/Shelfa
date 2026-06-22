@@ -219,7 +219,7 @@ class MasterOrchestratorNode(Node):
         pick_cmd = (
             "set +u && "
             "source /opt/ros/humble/setup.bash && "
-            f"source /home/{TEAMMATE_PC_USER}/ros2_ws/install/setup.bash && "
+            f"source /home/{TEAMMATE_PC_USER}/Shelfa/ros2_ws/install/setup.bash && "
             "export ROS_DOMAIN_ID=26 && "
             "ros2 service call /shelfa/pick_book_from_shelf shelfa_msgs/srv/PickBookFromShelf "
             f"\"{{shelf_id: 0, book_title: '{book_title}'}}\""
@@ -265,7 +265,7 @@ class MasterOrchestratorNode(Node):
         place_cmd = (
             "set +u && "
             "source /opt/ros/humble/setup.bash && "
-            f"source /home/{TEAMMATE_PC_USER}/ros2_ws/install/setup.bash && "
+            f"source /home/{TEAMMATE_PC_USER}/Shelfa/ros2_ws/install/setup.bash && "
             "export ROS_DOMAIN_ID=26 && "
             "ros2 service call /shelfa/place_book_in_storage shelfa_msgs/srv/PlaceBookInStorage "
             "\"{storage_id: 2}\""
