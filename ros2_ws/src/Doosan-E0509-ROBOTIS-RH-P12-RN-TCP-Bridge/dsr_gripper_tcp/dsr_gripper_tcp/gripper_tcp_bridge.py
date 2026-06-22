@@ -547,19 +547,6 @@ class DoosanGripperTcpBridge:
             ADDR_PROFILE_ACCELERATION = 278
             ADDR_PROFILE_VELOCITY = 280
             ADDR_GOAL_POSITION = 282
-            ADDR_MOVING_STATUS = 285
-            ADDR_PRESENT_CURRENT = 287
-            ADDR_PRESENT_VELOCITY = 288
-            ADDR_PRESENT_POSITION = 290
-            ADDR_PRESENT_TEMPERATURE = 297
-
-            g_slaveid = {cfg.slave_id}
-            g_goal_current = {cfg.goal_current}
-            g_profile_velocity = {cfg.profile_velocity}
-            g_profile_acceleration = {cfg.profile_acceleration}
-            g_sock = None
-            g_ready = False
-
             import struct
             def to_bytes(val, length):
                 if length == 1:
@@ -579,6 +566,19 @@ class DoosanGripperTcpBridge:
                 elif length == 4:
                     fmt = '>i' if signed else '>I'
                 return struct.unpack(fmt, data)[0]
+
+            ADDR_MOVING_STATUS = 285
+            ADDR_PRESENT_CURRENT = 287
+            ADDR_PRESENT_VELOCITY = 288
+            ADDR_PRESENT_POSITION = 290
+            ADDR_PRESENT_TEMPERATURE = 297
+
+            g_slaveid = {cfg.slave_id}
+            g_goal_current = {cfg.goal_current}
+            g_profile_velocity = {cfg.profile_velocity}
+            g_profile_acceleration = {cfg.profile_acceleration}
+            g_sock = None
+            g_ready = False
 
 
             def modbus_send_make(data):
@@ -763,26 +763,6 @@ class DoosanGripperTcpBridge:
                 global g_ready
                 g_ready = False
 
-            import struct
-            def to_bytes(val, length):
-                if length == 1:
-                    return struct.pack('>B', val & 0xFF)
-                elif length == 2:
-                    return struct.pack('>H', val & 0xFFFF)
-                elif length == 4:
-                    return struct.pack('>I', val & 0xFFFFFFFF)
-                return b''
-            
-            def from_bytes(data, signed):
-                length = len(data)
-                if length == 1:
-                    fmt = '>b' if signed else '>B'
-                elif length == 2:
-                    fmt = '>h' if signed else '>H'
-                elif length == 4:
-                    fmt = '>i' if signed else '>I'
-                return struct.unpack(fmt, data)[0]
-
                 open_serial_port()
 
                 # Some grippers need a moment to wake up after the serial
@@ -817,26 +797,6 @@ class DoosanGripperTcpBridge:
             def close_gripper():
                 global g_ready
                 g_ready = False
-
-            import struct
-            def to_bytes(val, length):
-                if length == 1:
-                    return struct.pack('>B', val & 0xFF)
-                elif length == 2:
-                    return struct.pack('>H', val & 0xFFFF)
-                elif length == 4:
-                    return struct.pack('>I', val & 0xFFFFFFFF)
-                return b''
-            
-            def from_bytes(data, signed):
-                length = len(data)
-                if length == 1:
-                    fmt = '>b' if signed else '>B'
-                elif length == 2:
-                    fmt = '>h' if signed else '>H'
-                elif length == 4:
-                    fmt = '>i' if signed else '>I'
-                return struct.unpack(fmt, data)[0]
 
                 # Best-effort torque off so the next session starts clean.
                 flange_serial_write(modbus_fc06(ADDR_TORQUE_ENABLE, 0))
@@ -987,26 +947,6 @@ class DoosanGripperTcpBridge:
                 flange_serial_write(modbus_fc06(ADDR_TORQUE_ENABLE, 0))
                 ok, val = recv_modbus_response(0.3, 8)
                 g_ready = False
-
-            import struct
-            def to_bytes(val, length):
-                if length == 1:
-                    return struct.pack('>B', val & 0xFF)
-                elif length == 2:
-                    return struct.pack('>H', val & 0xFFFF)
-                elif length == 4:
-                    return struct.pack('>I', val & 0xFFFFFFFF)
-                return b''
-            
-            def from_bytes(data, signed):
-                length = len(data)
-                if length == 1:
-                    fmt = '>b' if signed else '>B'
-                elif length == 2:
-                    fmt = '>h' if signed else '>H'
-                elif length == 4:
-                    fmt = '>i' if signed else '>I'
-                return struct.unpack(fmt, data)[0]
 
                 if ok is False:
                     send_response(command, seq, encode_state_payload(STATUS_IO_ERROR, 0, 0, 0, 0, 0, 0))
