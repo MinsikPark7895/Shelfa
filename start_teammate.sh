@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 echo "========================================="
 echo "Shelfa 책 감지-집기 실행 전 필수 노드 시작"
@@ -106,20 +106,12 @@ cat <<'EOF'
 cd /home/dakae/ros2_ws/src/Shelfa/ros2_ws
 source /opt/ros/humble/setup.bash
 source install/setup.bash
-ros2 run doosan_realsense_handeye book_mission_state_machine \
-  --ros-args \
-  -p dry_run:=false \
-  -p auto_run:=false \
-  -p alignment_dry_run:=false \
-  -p alignment_auto_run:=false \
-  -p marker2_alignment_enabled:=true \
-  -p marker2_alignment_dry_run:=false \
-  -p marker2_alignment_auto_run:=false \
-  -p regrip_after_marker2_alignment:=true \
-  -p marker2_place_after_regrip_enabled:=true \
-  -p alignment_timeout_sec:=600.0 \
-  -p marker2_alignment_timeout_sec:=600.0 \
-  -p service_call_timeout_sec:=120.0
+export ROS_DOMAIN_ID=26
+
+# 서비스 서버 상시 대기 가동 (계약/테스트 모드가 필요하면 dry_run:=true 사용)
+ros2 launch doosan_realsense_handeye book_mission_service_server.launch.py \
+  dry_run:=false \
+  auto_run:=true
 EOF
 echo
 echo "필수 노드를 종료하려면 이 터미널에서 Ctrl+C를 누르세요."
