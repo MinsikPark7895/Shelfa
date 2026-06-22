@@ -81,6 +81,7 @@ start_node "그리퍼 서비스" \
 start_node "ArUco marker 0 TF 발행기" \
   ros2 run doosan_realsense_handeye simple_aruco_marker_tf_publisher \
     --ros-args \
+    -r __node:=aruco_marker_0_node \
     -p marker_id:=0 \
     -p child_frame:=aruco_marker_0 \
     -p parent_frame:=camera_color_optical_frame \
@@ -90,6 +91,7 @@ start_node "ArUco marker 0 TF 발행기" \
 start_node "ArUco marker 2 TF 발행기" \
   ros2 run doosan_realsense_handeye simple_aruco_marker2_tf_publisher \
     --ros-args \
+    -r __node:=aruco_marker_2_node \
     -p marker_id:=2 \
     -p child_frame:=aruco_marker_2 \
     -p parent_frame:=camera_color_optical_frame \

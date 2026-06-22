@@ -162,7 +162,7 @@ class SimpleArucoMarkerTfPublisher(Node):
     def _make_detector_parameters(self):
         aruco = cv2.aruco
         if hasattr(aruco, "DetectorParameters"):
-            return aruco.DetectorParameters()
+            return aruco.DetectorParameters_create()
         return aruco.DetectorParameters_create()
 
     def _make_detector(self):
