@@ -14,6 +14,8 @@ find_package(action_msgs REQUIRED)
 # srv 및 action 파일들을 파이썬 모듈로 자동 빌드
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/FindBookGrasp.srv"
+  "srv/PickBookFromShelf.srv"
+  "srv/PlaceBookInStorage.srv"
   "action/ExecuteGrasp.action"
   DEPENDENCIES geometry_msgs action_msgs
 )
