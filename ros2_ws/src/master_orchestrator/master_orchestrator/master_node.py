@@ -204,35 +204,43 @@ class MasterOrchestratorNode(Node):
         self.get_logger().info(f"🚗 [Phase 1] {location_name} 책장 앞에 무사히 도착했습니다.")
         
         # ======================================================
-        # [Phase 2] 팀원 코드: SSH를 통해 팀원 컴퓨터에서 로봇팔 파이프라인 원격 실행
+        # [Phase 2] 제어 1: 팀원 PC(Domain 26)에서 '책 뽑기' 서비스 콜 원격 실행
         # ======================================================
         # ⚙️ 팀원 컴퓨터 접속 정보 (보안을 위해 환경변수 또는 .env 파일에서 불러옴)
         TEAMMATE_PC_IP   = os.environ.get("ROBOT_ARM_PC_IP", "192.168.0.100") # 미설정 시 기본값
         TEAMMATE_PC_USER = os.environ.get("ROBOT_ARM_PC_USER", "user")        # 미설정 시 기본값
-        REMOTE_SCRIPT    = f"/home/{TEAMMATE_PC_USER}/Shelfa/run_pickup.sh"   # 팀원 컴퓨터의 스크립트 경로
 
         book_title = book_info.get("title", "제3인류")
         self.get_logger().info(
-            f"🦾 [Phase 2] SSH로 팀원 컴퓨터({TEAMMATE_PC_IP})에 파지 명령 전송 (목표: {book_title})..."
+            f"🦾 [Phase 2] SSH로 팀원 컴퓨터({TEAMMATE_PC_IP})에 책 뽑기 서비스 콜 전송 (목표: {book_title})..."
+        )
+        
+        # 팀원 환경에서 ros2 service call을 직접 실행 (TF 오염 방지를 위해 Domain 26 격리 유지)
+        pick_cmd = (
+            "source /opt/ros/humble/setup.bash && "
+            f"source /home/{TEAMMATE_PC_USER}/ros2_ws/install/setup.bash && "
+            "export ROS_DOMAIN_ID=26 && "
+            "ros2 service call /shelfa/pick_book_from_shelf shelfa_msgs/srv/PickBookFromShelf "
+            f"\"{{shelf_id: 0, book_title: '{book_title}'}}\""
         )
 
         try:
-            process = await asyncio.create_subprocess_exec(
+            process1 = await asyncio.create_subprocess_exec(
                 "ssh",
                 "-o", "StrictHostKeyChecking=no",   # 최초 접속 시 확인 프롬프트 스킵
                 "-o", "BatchMode=yes",               # 비밀번호 입력 프롬프트 없이 키 인증만 사용
                 f"{TEAMMATE_PC_USER}@{TEAMMATE_PC_IP}",
-                f"bash {REMOTE_SCRIPT} \"{book_title}\"",
+                "bash", "-c", pick_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
 
-            stdout, stderr = await process.communicate()
+            stdout1, stderr1 = await process1.communicate()
 
-            if process.returncode == 0:
-                self.get_logger().info(f"🦾 [Phase 2] 로봇팔 픽업 완벽 성공!\n{stdout.decode()}")
+            if process1.returncode == 0:
+                self.get_logger().info(f"🦾 [Phase 2] 로봇팔 픽업 완벽 성공!\n{stdout1.decode()}")
             else:
-                self.get_logger().error(f"❌ [Phase 2] 파지 스크립트 에러 발생:\n{stderr.decode()}")
+                self.get_logger().error(f"❌ [Phase 2] 책 뽑기 서비스 에러 발생:\n{stderr1.decode()}\n{stdout1.decode()}")
                 return
 
         except Exception as e:
@@ -240,13 +248,49 @@ class MasterOrchestratorNode(Node):
             return
         
         # ======================================================
-        # [Phase 3] 책장 구역 -> 다시 대기 위치(HOME)로 복귀
+        # [Phase 3] 책장 구역 -> 대기 위치(HOME)로 이동
         # ======================================================
-        self.get_logger().info(f"🏠 [Phase 3] 임무 완수. 홈 위치(HOME)로 복귀합니다.")
+        self.get_logger().info(f"🏠 [Phase 3] 픽업 완료. 보관함(HOME) 위치로 이동합니다.")
         home_coords = SEMANTIC_MAP["HOME"]
         return_success = await self.send_nav_goal(home_coords['x'], home_coords['y'], home_coords['yaw'])
         if not return_success:
             self.get_logger().error("홈 복귀 중 문제 발생!")
+            return
+            
+        # ======================================================
+        # [Phase 4] 제어 2: 팀원 PC(Domain 26)에서 '보관함 넣기' 서비스 콜 원격 실행
+        # ======================================================
+        self.get_logger().info(f"🦾 [Phase 4] SSH로 팀원 컴퓨터({TEAMMATE_PC_IP})에 보관함 넣기 서비스 콜 전송...")
+        
+        place_cmd = (
+            "source /opt/ros/humble/setup.bash && "
+            f"source /home/{TEAMMATE_PC_USER}/ros2_ws/install/setup.bash && "
+            "export ROS_DOMAIN_ID=26 && "
+            "ros2 service call /shelfa/place_book_in_storage shelfa_msgs/srv/PlaceBookInStorage "
+            "\"{storage_id: 2}\""
+        )
+        
+        try:
+            process2 = await asyncio.create_subprocess_exec(
+                "ssh",
+                "-o", "StrictHostKeyChecking=no",
+                "-o", "BatchMode=yes",
+                f"{TEAMMATE_PC_USER}@{TEAMMATE_PC_IP}",
+                "bash", "-c", place_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+
+            stdout2, stderr2 = await process2.communicate()
+
+            if process2.returncode == 0:
+                self.get_logger().info(f"🦾 [Phase 4] 보관함 넣기 완벽 성공!\n{stdout2.decode()}")
+            else:
+                self.get_logger().error(f"❌ [Phase 4] 보관함 넣기 서비스 에러 발생:\n{stderr2.decode()}\n{stdout2.decode()}")
+                return
+
+        except Exception as e:
+            self.get_logger().error(f"❌ [Phase 4] SSH 원격 실행 실패: {e}")
             return
             
         self.get_logger().info(f"✅ 모든 미션 완벽하게 종료!")
