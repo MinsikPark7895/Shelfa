@@ -8,7 +8,7 @@ import time
 import rclpy
 from rclpy.node import Node
 
-from dsr_msgs2.srv import DrlStart, DrlStop, GetDrlState
+from dsr_msgs2.srv import DrlStart, DrlStop, GetDrlState, SetRobotMode
 
 from dsr_gripper_tcp.gripper_tcp_protocol import (
     Command,
@@ -111,8 +111,26 @@ class DoosanGripperTcpBridge:
         self._wait_for_service(self._drl_start, f"{self._service_root}/drl/drl_start")
         self._wait_for_service(self._drl_stop, f"{self._service_root}/drl/drl_stop")
         self._wait_for_service(self._get_drl_state, f"{self._service_root}/drl/get_drl_state")
+        
+        self._set_robot_mode = self._node.create_client(
+            SetRobotMode,
+            f"{self._service_root}/system/set_robot_mode",
+        )
+        self._wait_for_service(self._set_robot_mode, f"{self._service_root}/system/set_robot_mode")
 
     def start(self) -> None:
+        # ========================================================
+        # [우회 패치] DART 플랫폼 없이 ROS 2를 통해 로봇을 강제로 자율(Auto) 모드로 변경합니다.
+        # ========================================================
+        self._node.get_logger().info("🔥 ROS 2 API를 통해 로봇을 자율(Auto) 모드로 강제 전환합니다...")
+        mode_req = SetRobotMode.Request()
+        mode_req.robot_mode = 1  # 1: ROBOT_MODE_AUTONOMOUS
+        mode_res = self._call_service(self._set_robot_mode, mode_req, "SetRobotMode")
+        if mode_res and mode_res.success:
+            self._node.get_logger().info("✅ 로봇이 성공적으로 자율(Auto) 모드로 전환되었습니다!")
+        else:
+            self._node.get_logger().warning("⚠️ 자율 모드 전환에 실패했습니다. (이미 자율 모드이거나 에러)")
+
         current_state = self.get_drl_state()
         if current_state == DRL_PROGRAM_STATE_PLAY:
             if self._config.stop_existing_drl:
