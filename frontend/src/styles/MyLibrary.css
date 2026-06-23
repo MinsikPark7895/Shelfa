@@ -375,13 +375,7 @@
   flex-direction: column;
   gap: 10px;
   background: #F8F9FA;
-  width: 40%;
-}
-
-@media (max-width: 480px) {
-  .book-card-storage-box {
-    width: 90%;
-  }
+  width: 100%;
 }
 
 .book-card-storage-section {

@@ -1,0 +1,102 @@
+/* ===== 계정 설정 페이지 ===== */
+
+.pe-back-btn {
+  position: absolute;
+  left: 20px;
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.pe-back-btn svg {
+  width: 24px;
+  height: 24px;
+  color: var(--navy);
+}
+
+.pe-content {
+  flex: 1;
+  padding: 16px 20px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* 섹션 */
+.pe-section {
+  background: var(--white);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
+}
+
+.pe-section-header {
+  background: var(--navy);
+  color: var(--white);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 10px 20px;
+}
+
+/* 리스트 */
+.pe-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.pe-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--gray-100);
+  cursor: default;
+}
+
+.pe-list-item:last-child {
+  border-bottom: none;
+}
+
+.pe-item-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pe-item-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--gray-500);
+  flex-shrink: 0;
+}
+
+.pe-item-label {
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.pe-item-action {
+  font-size: 13px;
+  color: var(--navy);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.pe-item-action.withdraw {
+  color: var(--gray-500);
+}
+
+/* 비밀번호 변경 폼 */
+.pe-pw-form {
+  padding: 16px 20px 20px;
+  background: var(--gray-50);
+  border-top: 1px solid var(--gray-100);
+}
+
+.pe-pw-btn {
+  margin-top: 8px;
+  width: 100%;
+}

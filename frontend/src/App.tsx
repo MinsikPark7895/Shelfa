@@ -12,6 +12,7 @@ import BookDetail from './pages/BookDetail'
 import AdminPage from './pages/AdminPage'
 import ChatWidget from './components/ChatWidget'
 import './App.css'
+import ProfileEdit from './pages/ProfileEdit'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('access_token')
@@ -34,6 +35,7 @@ function App() {
         <Route path="/search" element={<PrivateRoute><Search /></PrivateRoute>} />
         <Route path="/book/:id" element={<PrivateRoute><BookDetail /></PrivateRoute>} />
         <Route path="/admin" element={<PrivateRoute><AdminPage /></PrivateRoute>} />
+        <Route path="/profile-edit" element={<PrivateRoute><ProfileEdit /></PrivateRoute>} />
       </Routes>
       <ChatWidget />
     </BrowserRouter>
