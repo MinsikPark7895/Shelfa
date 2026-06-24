@@ -30,6 +30,7 @@ class BookMissionServiceServer(Node):
         self.declare_parameter("alignment_timeout_sec", 600.0)
         self.declare_parameter("marker2_alignment_timeout_sec", 600.0)
         self.declare_parameter("service_call_timeout_sec", 120.0)
+        self.declare_parameter("gripper_timeout_sec", 20.0)
 
         self.dry_run = bool(self.get_parameter("dry_run").value)
         self.dry_run_contract_mode = bool(
@@ -47,6 +48,7 @@ class BookMissionServiceServer(Node):
         self.service_call_timeout_sec = float(
             self.get_parameter("service_call_timeout_sec").value
         )
+        self.gripper_timeout_sec = float(self.get_parameter("gripper_timeout_sec").value)
         self.busy = False
         self.state = self.load_state()
 
@@ -112,6 +114,8 @@ class BookMissionServiceServer(Node):
             f"marker2_alignment_timeout_sec:={self.marker2_alignment_timeout_sec}",
             "-p",
             f"service_call_timeout_sec:={self.service_call_timeout_sec}",
+            "-p",
+            f"gripper_timeout_sec:={self.gripper_timeout_sec}",
         ]
 
     def clear_mission_status(self):

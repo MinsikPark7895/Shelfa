@@ -295,7 +295,7 @@ class BookMissionStateMachine(Node):
         self.declare_parameter("gripper_open_position_2", 630)
         self.declare_parameter("gripper_soft_grip_position", 650)
         self.declare_parameter("gripper_hard_grip_position", 660)
-        self.declare_parameter("gripper_timeout_sec", 5.0)
+        self.declare_parameter("gripper_timeout_sec", 20.0)
         self.declare_parameter("gripper_require_ready", True)
         self.declare_parameter("gripper_require_torque_enabled", True)
 
@@ -725,16 +725,28 @@ class BookMissionStateMachine(Node):
         self.result.setdefault("pick_stage_results", {})
         self.result["pick_stage_results"][stage_name] = scan.sanitize_for_json(kwargs)
 
-    def call_service(self, client, service_name, request, label, timeout_sec=None):
-        if not client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().error(f"Service not available: {service_name}")
-            return False
+    def wait_for_client_service(self, client, service_name, timeout_sec):
+        start_time = time.monotonic()
+        timeout_sec = float(timeout_sec)
+        while rclpy.ok():
+            if client.wait_for_service(timeout_sec=0.5):
+                return True
+            if time.monotonic() - start_time >= timeout_sec:
+                self.get_logger().error(
+                    f"Service not available after {timeout_sec:.1f}s: {service_name}"
+                )
+                return False
+        return False
 
+    def call_service(self, client, service_name, request, label, timeout_sec=None):
         timeout_sec = (
             float(self.service_call_timeout_sec)
             if timeout_sec is None
             else float(timeout_sec)
         )
+        if not self.wait_for_client_service(client, service_name, timeout_sec):
+            return False
+
         future = client.call_async(request)
         start_time = time.monotonic()
         while rclpy.ok() and not future.done():
@@ -855,7 +867,11 @@ class BookMissionStateMachine(Node):
     def get_current_posx(self):
         if self.dry_run:
             return None
-        if not self.current_posx_client.wait_for_service(timeout_sec=1.0):
+        if not self.wait_for_client_service(
+            self.current_posx_client,
+            self.current_posx_service,
+            self.service_call_timeout_sec,
+        ):
             return None
 
         request = GetCurrentPosx.Request()
@@ -1206,6 +1222,7 @@ class BookMissionStateMachine(Node):
                 "book_scan_pose": book_scan_pose,
                 "books": books,
                 "selected_book_candidate": selected_book_candidate,
+                "ocr_priority_debug": ocr_build_debug.get("ocr_priority_debug"),
                 "ocr_early_stop_debug": ocr_build_debug,
                 "status": "book_scan_done" if selected_book_candidate is not None else "no_valid_book_pose",
                 "attempt_index": attempt_index,
@@ -1396,6 +1413,22 @@ class BookMissionStateMachine(Node):
         if not scan.is_finite_vector(mid_px, 2):
             return None
         return float(mid_px[0])
+
+    def lateral_target_pixel_x(self):
+        configured_target = float(self.book_lateral_target_pixel_x)
+        if configured_target >= 0.0:
+            return configured_target, "configured"
+
+        scan_result = self.result.get("book_scan_result") or {}
+        priority_debug = scan_result.get("ocr_priority_debug") or {}
+        if not priority_debug:
+            ocr_debug = scan_result.get("ocr_early_stop_debug") or {}
+            priority_debug = ocr_debug.get("ocr_priority_debug") or {}
+        screen_center_px = priority_debug.get("screen_center_px")
+        if scan.is_finite_vector(screen_center_px, 2):
+            return float(screen_center_px[0]), "scan_screen_center"
+
+        return float(self.scan_width) * 0.5, "configured_scan_width_fallback"
 
     def move_relative_tool_axis_mm(self, axis, signed_mm, label):
         axis = str(axis).lower()
@@ -1633,9 +1666,6 @@ class BookMissionStateMachine(Node):
         steps = []
         max_steps = max(0, int(self.book_lateral_max_steps))
         tolerance_px = max(0.0, float(self.book_lateral_pixel_tolerance_px))
-        target_pixel_x = float(self.book_lateral_target_pixel_x)
-        if target_pixel_x < 0.0:
-            target_pixel_x = float(self.scan_width) * 0.5
         max_step_mm = max(0.0, float(self.book_lateral_max_step_mm))
         gain_mm_per_px = max(0.0, float(self.book_lateral_pixel_gain_mm_per_px))
 
@@ -1650,11 +1680,13 @@ class BookMissionStateMachine(Node):
                     selected_book=scan.sanitize_for_json(selected_book),
                 )
 
+            target_pixel_x, target_pixel_source = self.lateral_target_pixel_x()
             error_px = float(pixel_x) - target_pixel_x
             step_info = {
                 "step_index": int(step_index),
                 "pixel_x": float(pixel_x),
                 "target_pixel_x": float(target_pixel_x),
+                "target_pixel_source": target_pixel_source,
                 "error_px": float(error_px),
                 "tolerance_px": tolerance_px,
             }
@@ -1683,6 +1715,16 @@ class BookMissionStateMachine(Node):
                 self.book_lateral_axis_sign
                 * (1.0 if error_px >= 0.0 else -1.0)
                 * move_mm
+            )
+            step_info["move_mm"] = float(move_mm)
+            step_info["signed_mm"] = float(signed_mm)
+            step_info["axis"] = self.book_lateral_axis
+            step_info["axis_sign"] = float(self.book_lateral_axis_sign)
+            self.log_info(
+                f"[ALIGN_BOOK_LATERAL] step={step_index} "
+                f"pixel_x={pixel_x:.1f} target={target_pixel_x:.1f} "
+                f"source={target_pixel_source} error={error_px:.1f}px "
+                f"move={signed_mm:.1f}mm axis={self.book_lateral_axis}"
             )
             ok, move_result = self.move_relative_tool_axis_mm(
                 self.book_lateral_axis,

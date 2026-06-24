@@ -856,9 +856,28 @@ class ArucoMarkerProtoAlign(Node):
             f"  bookshelf_front_direction_base={payload['bookshelf_front_direction_base']}"
         )
 
+    def wait_for_client_service(self, client, service_name, timeout_sec, *, warn=False):
+        start_time = time.monotonic()
+        timeout_sec = float(timeout_sec)
+        while rclpy.ok():
+            if client.wait_for_service(timeout_sec=0.5):
+                return True
+            if time.monotonic() - start_time >= timeout_sec:
+                message = f"Service not available after {timeout_sec:.1f}s: {service_name}"
+                if warn:
+                    self.get_logger().warn(message)
+                else:
+                    self.get_logger().error(message)
+                return False
+        return False
+
     def read_current_tcp_posx(self):
-        if not self.current_posx_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().warn(f"Service not available: {self.current_posx_service}")
+        if not self.wait_for_client_service(
+            self.current_posx_client,
+            self.current_posx_service,
+            self.movej_service_timeout_sec,
+            warn=True,
+        ):
             return None
 
         request = GetCurrentPosx.Request()
@@ -940,8 +959,12 @@ class ArucoMarkerProtoAlign(Node):
         request.sync_type = 0
 
     def call_service(self, client, service_name, request, label):
-        if not client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().error(f"Service not available: {service_name}. No movement sent.")
+        timeout_sec = (
+            float(self.moveline_service_timeout_sec)
+            if label.startswith("MoveLine")
+            else float(self.movej_service_timeout_sec)
+        )
+        if not self.wait_for_client_service(client, service_name, timeout_sec):
             if self.auto_run and not self.dry_run:
                 self.abort_requested = True
             return False
@@ -949,11 +972,6 @@ class ArucoMarkerProtoAlign(Node):
         self.get_logger().warn(f"Calling {service_name}")
         future = client.call_async(request)
         start_time = time.monotonic()
-        timeout_sec = (
-            float(self.moveline_service_timeout_sec)
-            if label.startswith("MoveLine")
-            else float(self.movej_service_timeout_sec)
-        )
         while rclpy.ok() and not future.done():
             if time.monotonic() - start_time > timeout_sec:
                 self.get_logger().error(

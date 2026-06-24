@@ -17,3 +17,4 @@ book_mission_service_server:
     alignment_timeout_sec: 600.0
     marker2_alignment_timeout_sec: 600.0
     service_call_timeout_sec: 120.0
+    gripper_timeout_sec: 20.0

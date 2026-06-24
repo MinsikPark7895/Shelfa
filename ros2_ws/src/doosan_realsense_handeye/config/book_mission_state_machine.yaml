@@ -112,7 +112,7 @@ book_mission_state_machine:
     marker2_place_return_home: true
     stop_after_gripper_after_lateral: false
     stop_after_book_verify_again: false
-    home_joint_pose_deg: [0.0, 0.0, 90.0, 0.0, 90.0, 0.0]
+    home_joint_pose_deg: [9.21, -10.0, 110.85, -87.77, 98.93, 14.04]
     place_joint_pose_deg: [0.0, 0.0, 90.0, 0.0, 90.0, 0.0]
     move_home_vel_deg: 30.0
     move_home_acc_deg: 60.0
@@ -135,7 +135,7 @@ book_mission_state_machine:
     gripper_open_position_2: 630
     gripper_soft_grip_position: 650
     gripper_hard_grip_position: 660
-    gripper_timeout_sec: 5.0
+    gripper_timeout_sec: 20.0
     gripper_require_ready: true
     gripper_require_torque_enabled: true
     pick_axis: z

@@ -15,6 +15,9 @@ ROBOT_MODEL="${ROBOT_MODEL:-e0509}"
 ROBOT_NAMESPACE="${ROBOT_NAMESPACE:-dsr01}"
 ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-26}"
 ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
+SERVICE_WAIT_TIMEOUT_SEC="${SERVICE_WAIT_TIMEOUT_SEC:-60}"
+REALSENSE_COLOR_PROFILE="${REALSENSE_COLOR_PROFILE:-640x480x15}"
+REALSENSE_DEPTH_PROFILE="${REALSENSE_DEPTH_PROFILE:-640x480x15}"
 
 source /opt/ros/humble/setup.bash
 if [ -f "${ROS_WS}/install/setup.bash" ]; then
@@ -44,6 +47,59 @@ start_node() {
   sleep 2
 }
 
+start_node_quiet() {
+  local name="$1"
+  local log_file="$2"
+  shift 2
+  mkdir -p "$(dirname "${log_file}")"
+  echo
+  echo "[$name] 실행 중: 콘솔 로그 숨김 (${log_file})"
+  printf '  %q' "$@"
+  echo
+  "$@" >"${log_file}" 2>&1 &
+  PIDS+=("$!")
+  sleep 2
+}
+
+wait_for_service() {
+  local service_name="$1"
+  local timeout_sec="${2:-${SERVICE_WAIT_TIMEOUT_SEC}}"
+  local start_time
+  start_time="$(date +%s)"
+
+  echo
+  echo "[서비스 대기] ${service_name}"
+  while true; do
+    if ros2 service type "${service_name}" >/dev/null 2>&1; then
+      echo "  준비됨: ${service_name}"
+      return 0
+    fi
+
+    if [ "$(($(date +%s) - start_time))" -ge "${timeout_sec}" ]; then
+      echo "오류: ${timeout_sec}초 안에 서비스가 준비되지 않았습니다: ${service_name}"
+      echo "현재 /${ROBOT_NAMESPACE} 관련 서비스:"
+      ros2 service list | grep "/${ROBOT_NAMESPACE}/" || true
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+wait_for_required_robot_services() {
+  wait_for_service "/${ROBOT_NAMESPACE}/controller_manager/list_controllers"
+
+  echo
+  echo "[컨트롤러 확인] joint_state_broadcaster, dsr_controller2 로드/활성화"
+  ros2 run doosan_realsense_handeye controller_loader \
+    --ros-args \
+    -p controller_manager:=/${ROBOT_NAMESPACE}/controller_manager \
+    -p startup_delay_sec:=0.0
+
+  wait_for_service "/${ROBOT_NAMESPACE}/motion/move_joint"
+  wait_for_service "/${ROBOT_NAMESPACE}/motion/move_line"
+  wait_for_service "/${ROBOT_NAMESPACE}/aux_control/get_current_posx"
+}
+
 cleanup() {
   echo
   echo "Shelfa 필수 노드를 종료합니다..."
@@ -57,28 +113,31 @@ trap cleanup INT TERM EXIT
 cd "${ROS_WS}"
 
 start_node "두산 로봇 bringup + RViz" \
-  ros2 launch doosan_realsense_handeye dsr_bringup2_rviz_gripper_camera.launch.py \
-    mode:=real \
+  ros2 launch dsr_bringup2 dsr_bringup2_rviz.launch.py \
+    name:="${ROBOT_NAMESPACE}" \
     host:="${ROBOT_HOST}" \
-    port:="${ROBOT_PORT}" \
+    mode:=real \
     model:="${ROBOT_MODEL}"
 
 echo "로봇 bringup 초기화를 기다립니다..."
 sleep 8
+wait_for_required_robot_services
 
 start_node "RealSense 카메라" \
   ros2 launch realsense2_camera rs_launch.py \
     enable_color:=true \
     enable_depth:=true \
     align_depth.enable:=true \
-    publish_tf:=true
+    publish_tf:=true \
+    rgb_camera.color_profile:="${REALSENSE_COLOR_PROFILE}" \
+    depth_module.depth_profile:="${REALSENSE_DEPTH_PROFILE}"
 
 start_node "그리퍼 서비스" \
   ros2 launch dsr_gripper_tcp gripper_service_node.launch.py \
     controller_host:="${ROBOT_HOST}" \
     namespace:="${ROBOT_NAMESPACE}"
 
-start_node "ArUco marker 0 TF 발행기" \
+start_node_quiet "ArUco marker 0 TF 발행기" "${ROS_WS}/log/start_teammate/aruco_marker_0.log" \
   ros2 run doosan_realsense_handeye simple_aruco_marker_tf_publisher \
     --ros-args \
     -r __node:=aruco_marker_0_node \
@@ -88,7 +147,7 @@ start_node "ArUco marker 0 TF 발행기" \
     -p image_topic:=/camera/camera/color/image_raw \
     -p camera_info_topic:=/camera/camera/color/camera_info
 
-start_node "ArUco marker 2 TF 발행기" \
+start_node_quiet "ArUco marker 2 TF 발행기" "${ROS_WS}/log/start_teammate/aruco_marker_2.log" \
   ros2 run doosan_realsense_handeye simple_aruco_marker2_tf_publisher \
     --ros-args \
     -r __node:=aruco_marker_2_node \
@@ -105,7 +164,7 @@ echo "이제 서비스 콜을 받을 '미션 서버'를 백그라운드에서 �
 echo "========================================="
 
 start_node "미션 서비스 서버" \
-  ros2 launch doosan_realsense_handeye book_mission_service_server.launch.py \
+  env ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" ros2 launch doosan_realsense_handeye book_mission_service_server.launch.py \
     dry_run:=false \
     dry_run_contract_mode:=false \
     auto_run:=true
