@@ -168,9 +168,14 @@ function ChatWidget() {
     ])
   }
 
-  // 같은 키워드로 다른 도서 추천받기
+  // 같은 키워드로 다른 도서 추천받기 (이미 추천된 책 전부 제외)
   const handleOtherRecommend = () => {
-    sendMessage(`${lastRecommendKeyword} 주제로 방금 추천해준 책 말고 다른 책 추천해줘`)
+    const alreadyRecommended = messages
+      .filter((m) => m.role === 'bot' && m.recommendedBookTitle)
+      .map((m) => `"${m.recommendedBookTitle}"`)
+      .join(', ')
+    const exclude = alreadyRecommended ? `${alreadyRecommended} 이외의 ` : ''
+    sendMessage(`${lastRecommendKeyword} 주제로 ${exclude}다른 책 추천해줘`)
   }
 
   // 새 주제로 다시 입력
