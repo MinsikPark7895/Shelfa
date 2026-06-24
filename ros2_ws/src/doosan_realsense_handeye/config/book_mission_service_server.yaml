@@ -1,0 +1,20 @@
+book_mission_service_server:
+  ros__parameters:
+    dry_run: true
+    # true이면 dry_run 서비스 호출 때 하위 정렬/비전/로봇 미션을 실행하지 않고
+    # 서비스 요청 검증, held-book 상태 전이, 응답 포맷만 빠르게 테스트합니다.
+    dry_run_contract_mode: true
+    auto_run: true
+
+    state_json: "realtime_results/book_service_state.json"
+    mission_result_json: "realtime_results/mission_result.json"
+
+    service_pick_name: "/shelfa/pick_book_from_shelf"
+    service_place_name: "/shelfa/place_book_in_storage"
+
+    pick_timeout_sec: 1200.0
+    place_timeout_sec: 900.0
+    alignment_timeout_sec: 600.0
+    marker2_alignment_timeout_sec: 600.0
+    service_call_timeout_sec: 120.0
+    gripper_timeout_sec: 20.0

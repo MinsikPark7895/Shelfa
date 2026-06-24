@@ -8,7 +8,7 @@ import time
 import rclpy
 from rclpy.node import Node
 
-from dsr_msgs2.srv import DrlStart, DrlStop, GetDrlState
+from dsr_msgs2.srv import DrlStart, DrlStop, GetDrlState, SetRobotMode
 
 from dsr_gripper_tcp.gripper_tcp_protocol import (
     Command,
@@ -111,8 +111,26 @@ class DoosanGripperTcpBridge:
         self._wait_for_service(self._drl_start, f"{self._service_root}/drl/drl_start")
         self._wait_for_service(self._drl_stop, f"{self._service_root}/drl/drl_stop")
         self._wait_for_service(self._get_drl_state, f"{self._service_root}/drl/get_drl_state")
+        
+        self._set_robot_mode = self._node.create_client(
+            SetRobotMode,
+            f"{self._service_root}/system/set_robot_mode",
+        )
+        self._wait_for_service(self._set_robot_mode, f"{self._service_root}/system/set_robot_mode")
 
     def start(self) -> None:
+        # ========================================================
+        # [우회 패치] DART 플랫폼 없이 ROS 2를 통해 로봇을 강제로 자율(Auto) 모드로 변경합니다.
+        # ========================================================
+        self._node.get_logger().info("🔥 ROS 2 API를 통해 로봇을 자율(Auto) 모드로 강제 전환합니다...")
+        mode_req = SetRobotMode.Request()
+        mode_req.robot_mode = 1  # 1: ROBOT_MODE_AUTONOMOUS
+        mode_res = self._call_service(self._set_robot_mode, mode_req, "SetRobotMode")
+        if mode_res and mode_res.success:
+            self._node.get_logger().info("✅ 로봇이 성공적으로 자율(Auto) 모드로 전환되었습니다!")
+        else:
+            self._node.get_logger().warning("⚠️ 자율 모드 전환에 실패했습니다. (이미 자율 모드이거나 에러)")
+
         current_state = self.get_drl_state()
         if current_state == DRL_PROGRAM_STATE_PLAY:
             if self._config.stop_existing_drl:
@@ -542,36 +560,38 @@ class DoosanGripperTcpBridge:
             g_sock = None
             g_ready = False
 
+            def compute_crc(data_list):
+                crc = 0xFFFF
+                for b in data_list:
+                    crc ^= b
+                    for _ in range(8):
+                        if crc & 1:
+                            crc = (crc >> 1) ^ 0xA001
+                        else:
+                            crc = crc >> 1
+                return data_list + [crc & 0xFF, (crc >> 8) & 0xFF]
+
             def modbus_set_slaveid(slaveid):
                 global g_slaveid
                 g_slaveid = slaveid
 
             def modbus_fc03(startaddress, cnt):
                 global g_slaveid
-                data = (g_slaveid).to_bytes(1, byteorder='big')
-                data += (3).to_bytes(1, byteorder='big')
-                data += (startaddress).to_bytes(2, byteorder='big')
-                data += (cnt).to_bytes(2, byteorder='big')
-                return modbus_send_make(data)
+                data = [g_slaveid, 3, (startaddress >> 8) & 0xFF, startaddress & 0xFF, (cnt >> 8) & 0xFF, cnt & 0xFF]
+                return bytes(bytearray(compute_crc(data)))
 
             def modbus_fc06(address, value):
                 global g_slaveid
-                data = (g_slaveid).to_bytes(1, byteorder='big')
-                data += (6).to_bytes(1, byteorder='big')
-                data += (address).to_bytes(2, byteorder='big')
-                data += (value).to_bytes(2, byteorder='big')
-                return modbus_send_make(data)
+                data = [g_slaveid, 6, (address >> 8) & 0xFF, address & 0xFF, (value >> 8) & 0xFF, value & 0xFF]
+                return bytes(bytearray(compute_crc(data)))
 
             def modbus_fc16(startaddress, cnt, valuelist):
                 global g_slaveid
-                data = (g_slaveid).to_bytes(1, byteorder='big')
-                data += (16).to_bytes(1, byteorder='big')
-                data += (startaddress).to_bytes(2, byteorder='big')
-                data += (cnt).to_bytes(2, byteorder='big')
-                data += (2 * cnt).to_bytes(1, byteorder='big')
-                for i in range(0, cnt):
-                    data += (valuelist[i]).to_bytes(2, byteorder='big')
-                return modbus_send_make(data)
+                data = [g_slaveid, 16, (startaddress >> 8) & 0xFF, startaddress & 0xFF, (cnt >> 8) & 0xFF, cnt & 0xFF, (2 * cnt) & 0xFF]
+                for i in range(cnt):
+                    val = valuelist[i]
+                    data.extend([(val >> 8) & 0xFF, val & 0xFF])
+                return bytes(bytearray(compute_crc(data)))
 
             def u32_to_words(value):
                 low_word = value & 0xFFFF
@@ -587,7 +607,7 @@ class DoosanGripperTcpBridge:
             def recv_modbus_response(timeout, expected_length=0):
                 deadline_ms = int(timeout * 1000)
                 elapsed_ms = 0
-                buffer = b""
+                buffer = bytearray()
 
                 while elapsed_ms <= deadline_ms:
                     size, val = flange_serial_read(0.05)
@@ -614,7 +634,7 @@ class DoosanGripperTcpBridge:
 
             def tcp_read_exact(size):
                 global g_sock
-                data = b""
+                data = bytearray()
                 while len(data) < size:
                     res, chunk = server_socket_read(g_sock, size - len(data), 1.0)
                     if res < 0:

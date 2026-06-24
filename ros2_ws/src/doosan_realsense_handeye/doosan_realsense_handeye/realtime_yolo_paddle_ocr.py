@@ -1105,7 +1105,6 @@ class BookVisionRobotNode(Node):
             self.tf_listener = TransformListener(
                 self.tf_buffer,
                 self,
-                spin_thread=True,
             )
         except TypeError:
             self.tf_listener = TransformListener(self.tf_buffer, self)

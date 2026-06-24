@@ -18,10 +18,15 @@ MARKER_TARGET_PRESETS = {
     # Previous marker0 view pose: [-12.5, -7.77, 91.42, -88.59, 77.57, -6.51]
     0: [9.21, -6.98, 110.85, -87.77, 98.93, 14.04],
     1: [-12.5, 13.62, 127.84, -99.84, 82.24, 51.12],
+    # Previous marker2 view pose: [-17.87, 2.7, 122.02, -100.83, 74.83, 36.16]
+    2: [9.21, -6.98, 110.85, -87.77, 98.93, 14.04],
+    3: [9.21, -6.98, 110.85, -87.77, 98.93, 14.04],
 }
 MARKER_SCAN_TOOL_Y_OFFSETS_MM = {
     0: 200.0,
     1: 150.0,
+    2: 0.0,
+    3: 0.0,
 }
 
 
@@ -37,6 +42,8 @@ class ArucoMarkerProtoAlign(Node):
         self.declare_parameter("move_joint_service", "/dsr01/motion/move_joint")
         self.declare_parameter("move_line_service", "/dsr01/motion/move_line")
         self.declare_parameter("current_posx_service", "/dsr01/aux_control/get_current_posx")
+        self.declare_parameter("movej_service_timeout_sec", 30.0)
+        self.declare_parameter("moveline_service_timeout_sec", 120.0)
         self.declare_parameter("dry_run", True)
         self.declare_parameter("current_posx_ref", 0)
         self.declare_parameter("alignment_payload_json", "./realtime_results/alignment_payload.json")
@@ -107,6 +114,12 @@ class ArucoMarkerProtoAlign(Node):
         self.move_joint_service = str(self.get_parameter("move_joint_service").value)
         self.move_line_service = str(self.get_parameter("move_line_service").value)
         self.current_posx_service = str(self.get_parameter("current_posx_service").value)
+        self.movej_service_timeout_sec = float(
+            self.get_parameter("movej_service_timeout_sec").value
+        )
+        self.moveline_service_timeout_sec = float(
+            self.get_parameter("moveline_service_timeout_sec").value
+        )
         self.dry_run = bool(self.get_parameter("dry_run").value)
         self.current_posx_ref = int(self.get_parameter("current_posx_ref").value)
         self.alignment_payload_json = str(self.get_parameter("alignment_payload_json").value)
@@ -843,9 +856,28 @@ class ArucoMarkerProtoAlign(Node):
             f"  bookshelf_front_direction_base={payload['bookshelf_front_direction_base']}"
         )
 
+    def wait_for_client_service(self, client, service_name, timeout_sec, *, warn=False):
+        start_time = time.monotonic()
+        timeout_sec = float(timeout_sec)
+        while rclpy.ok():
+            if client.wait_for_service(timeout_sec=0.5):
+                return True
+            if time.monotonic() - start_time >= timeout_sec:
+                message = f"Service not available after {timeout_sec:.1f}s: {service_name}"
+                if warn:
+                    self.get_logger().warn(message)
+                else:
+                    self.get_logger().error(message)
+                return False
+        return False
+
     def read_current_tcp_posx(self):
-        if not self.current_posx_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().warn(f"Service not available: {self.current_posx_service}")
+        if not self.wait_for_client_service(
+            self.current_posx_client,
+            self.current_posx_service,
+            self.movej_service_timeout_sec,
+            warn=True,
+        ):
             return None
 
         request = GetCurrentPosx.Request()
@@ -927,8 +959,12 @@ class ArucoMarkerProtoAlign(Node):
         request.sync_type = 0
 
     def call_service(self, client, service_name, request, label):
-        if not client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().error(f"Service not available: {service_name}. No movement sent.")
+        timeout_sec = (
+            float(self.moveline_service_timeout_sec)
+            if label.startswith("MoveLine")
+            else float(self.movej_service_timeout_sec)
+        )
+        if not self.wait_for_client_service(client, service_name, timeout_sec):
             if self.auto_run and not self.dry_run:
                 self.abort_requested = True
             return False
@@ -937,8 +973,10 @@ class ArucoMarkerProtoAlign(Node):
         future = client.call_async(request)
         start_time = time.monotonic()
         while rclpy.ok() and not future.done():
-            if time.monotonic() - start_time > 10.0:
-                self.get_logger().error(f"{label} service call timed out after 10 seconds.")
+            if time.monotonic() - start_time > timeout_sec:
+                self.get_logger().error(
+                    f"{label} service call timed out after {timeout_sec:.1f} seconds."
+                )
                 return False
             time.sleep(0.05)
 

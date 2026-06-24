@@ -1,0 +1,9 @@
+# 책장에서 책을 찾아 뽑아 임시 배치 위치에 내려놓습니다.
+# shelf_id는 책장 ArUco marker id이며 0 또는 1만 허용합니다.
+int32 shelf_id
+string book_title
+---
+bool success
+string message
+string held_book_title
+string result_json
