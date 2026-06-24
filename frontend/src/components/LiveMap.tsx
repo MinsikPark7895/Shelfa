@@ -8,8 +8,14 @@ interface Pose {
   yaw: number;
 }
 
+interface RobotStatus {
+  status: string;
+  message: string;
+}
+
 const LiveMap: React.FC = () => {
   const [pose, setPose] = useState<Pose | null>(null);
+  const [robotStatus, setRobotStatus] = useState<RobotStatus | null>(null);
 
   useEffect(() => {
     // MQTT 연결 옵션 (GCP 클라우드 접속)
@@ -26,20 +32,20 @@ const LiveMap: React.FC = () => {
     client.on('connect', () => {
       console.log('LiveMap: MQTT 웹소켓 연결 성공');
       client.subscribe('shelfa/robot/pose', (err) => {
-        if (!err) {
-          console.log('LiveMap: shelfa/robot/pose 구독 완료');
-        }
+        if (!err) console.log('LiveMap: shelfa/robot/pose 구독 완료');
+      });
+      client.subscribe('shelfa/robot/status', (err) => {
+        if (!err) console.log('LiveMap: shelfa/robot/status 구독 완료');
       });
     });
 
     client.on('message', (topic, message) => {
-      if (topic === 'shelfa/robot/pose') {
-        try {
-          const data: Pose = JSON.parse(message.toString());
-          setPose(data);
-        } catch (e) {
-          console.error('JSON 파싱 에러', e);
-        }
+      try {
+        const data = JSON.parse(message.toString());
+        if (topic === 'shelfa/robot/pose') setPose(data as Pose);
+        if (topic === 'shelfa/robot/status') setRobotStatus(data as RobotStatus);
+      } catch (e) {
+        console.error('JSON 파싱 에러', e);
       }
     });
 
@@ -105,6 +111,11 @@ const LiveMap: React.FC = () => {
       {pose && (
         <div className="livemap-coordinates">
           현재 위치: X {pose.x.toFixed(2)}m, Y {pose.y.toFixed(2)}m (각도: {pose.yaw.toFixed(1)}°)
+        </div>
+      )}
+      {robotStatus && (
+        <div className={`livemap-robot-status ${robotStatus.status === 'SUCCESS' ? 'status-success' : 'status-error'}`}>
+          {robotStatus.status === 'SUCCESS' ? '✅' : '❌'} {robotStatus.message}
         </div>
       )}
     </div>

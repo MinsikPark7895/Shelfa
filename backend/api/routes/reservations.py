@@ -34,7 +34,15 @@ async def create_reservation(
             
         if book.status != "AVAILABLE":
             raise HTTPException(status_code=400, detail="현재 예약이 불가능한 상태의 도서입니다.")
-            
+
+        # 예약 5권 초과 방지
+        active_count = db.query(models.Reservation).filter(
+            models.Reservation.user_id == current_user.id,
+            models.Reservation.status == "PENDING"
+        ).count()
+        if active_count >= 5:
+            raise HTTPException(status_code=400, detail="예약은 최대 5권까지만 가능합니다.")
+
         # 1. 예약 기록 생성
         new_reservation = models.Reservation(
             user_id=current_user.id,

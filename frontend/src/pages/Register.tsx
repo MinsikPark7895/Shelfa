@@ -62,7 +62,7 @@ function Register() {
       } else {
         const err = await res.json().catch(() => ({}))
         const detail = Array.isArray(err?.detail)
-          ? err.detail.map((d: any) => {
+          ? err.detail.map((d: { msg: string }) => {
             const msg = d.msg.replace('Value error, ', '')
             if (msg.includes('email')) return '올바른 이메일 형식이 아닙니다.'
             return msg

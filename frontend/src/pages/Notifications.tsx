@@ -16,13 +16,14 @@ interface Notification {
 
 const DISMISSED_KEY = 'dismissed_notifications'
 
+interface ApiReservation { id: string; status: string; reserved_at?: string; book: { id: string; title: string; author?: string; publisher?: string; shelf_location?: string; cover_image_url?: string } }
+interface ApiLoan { id: string; status: string; due_date: string; book: { id: string; title: string; author?: string; publisher?: string; shelf_location?: string; cover_image_url?: string } }
+
 function Notifications() {
   const navigate = useNavigate()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [fetchError, setFetchError] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-
-  useEffect(() => { fetchNotifications() }, [])
 
   const getDismissed = (): string[] => {
     try { return JSON.parse(localStorage.getItem(DISMISSED_KEY) || '[]') } catch { return [] }
@@ -38,7 +39,7 @@ function Notifications() {
       const resRes = await apiFetch('/reservations/me?limit=50')
       if (resRes.ok) {
         const resData = await resRes.json()
-        for (const r of (resData.items || []).filter((r: any) => r.status === 'PENDING')) {
+        for (const r of (resData.items as ApiReservation[] || []).filter(r => r.status === 'PENDING')) {
           const id = `reserve-${r.id}`
           if (dismissed.includes(id)) continue
           notifs.push({
@@ -58,7 +59,7 @@ function Notifications() {
       const loanRes = await apiFetch('/loans/me?limit=50')
       if (loanRes.ok) {
         const loanData = await loanRes.json()
-        for (const l of (loanData.items || []).filter((l: any) => l.status === 'ACTIVE')) {
+        for (const l of (loanData.items as ApiLoan[] || []).filter(l => l.status === 'ACTIVE')) {
           const daysLeft = Math.ceil((new Date(l.due_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
           if (daysLeft > 3) continue
           const id = `return-${l.id}`
@@ -79,6 +80,9 @@ function Notifications() {
     } catch { setFetchError(true) }
     finally { setIsLoading(false) }
   }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { fetchNotifications() }, [])
 
   const handleDelete = (id: string) => {
     const dismissed = getDismissed()

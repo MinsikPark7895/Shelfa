@@ -52,19 +52,6 @@ function AdminPage() {
   const [showDeleteNotice, setShowDeleteNotice] = useState(false)
   const [gearOpenId, setGearOpenId] = useState<string | null>(null)
 
-  useEffect(() => {
-    const user = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} } })()
-    if (user.role !== 'admin') { navigate('/home'); return }
-    if (activeTab === 'users') fetchUsers()
-    if (activeTab === 'books') {
-      const q = searchParams.get('q') || ''
-      if (q) fetchBookList(q)
-    }
-    setBookStep('idle')
-    setIsbnList([])
-    setBookCount('')
-  }, [activeTab])
-
   const fetchUsers = async () => {
     setLoading(true)
     try {
@@ -73,7 +60,7 @@ function AdminPage() {
         const data = await res.json()
         setUsers(data.items || data || [])
       }
-    } catch { alert('유저 목록을 불러오는 중 오류가 발생했습니다.') } finally { setLoading(false) }
+    } catch { /* */ } finally { setLoading(false) }
   }
 
   const fetchBookList = async (query: string) => {
@@ -90,6 +77,18 @@ function AdminPage() {
       }
     } catch { alert('도서 검색 중 오류가 발생했습니다.') } finally { setBookListLoading(false) }
   }
+
+  useEffect(() => {
+    const user = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} } })()
+    if (user.role !== 'admin') { navigate('/home'); return }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (activeTab === 'users') fetchUsers()
+    if (activeTab === 'books') {
+      const q = searchParams.get('q') || ''
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (q) fetchBookList(q)
+    }
+  }, [activeTab])
 
   const handleSelectType = (type: 10 | 13) => {
     setIsbnType(type)
@@ -169,9 +168,9 @@ function AdminPage() {
         <h1 className="admin-title">관리</h1>
 
         <div className="tab-group">
-          <button className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => { setActiveTab('users'); setSearchParams({ tab: 'users' }) }}>유저관리</button>
-          <button className={`tab-btn ${activeTab === 'books' ? 'active' : ''}`} onClick={() => { setActiveTab('books'); setSearchParams({ tab: 'books' }) }}>도서관리</button>
-          <button className={`tab-btn ${activeTab === 'robot' ? 'active' : ''}`} onClick={() => { setActiveTab('robot'); setSearchParams({ tab: 'robot' }) }}>로봇관리</button>
+          <button className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => { setActiveTab('users'); setSearchParams({ tab: 'users' }); setBookStep('idle'); setIsbnList([]); setBookCount('') }}>유저관리</button>
+          <button className={`tab-btn ${activeTab === 'books' ? 'active' : ''}`} onClick={() => { setActiveTab('books'); setSearchParams({ tab: 'books' }); setBookStep('idle'); setIsbnList([]); setBookCount('') }}>도서관리</button>
+          <button className={`tab-btn ${activeTab === 'robot' ? 'active' : ''}`} onClick={() => { setActiveTab('robot'); setSearchParams({ tab: 'robot' }); setBookStep('idle'); setIsbnList([]); setBookCount('') }}>로봇관리</button>
         </div>
 
         {activeTab === 'users' && (

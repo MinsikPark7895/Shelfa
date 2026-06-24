@@ -43,11 +43,6 @@ function Home() {
     return () => clearInterval(timer)
   }, [])
 
-  useEffect(() => {
-    fetchLibrarySummary()
-    fetchWishlist()
-  }, [])
-
   const fetchLibrarySummary = async () => {
     try {
       setSummaryError(false)
@@ -81,10 +76,10 @@ function Home() {
       const loanData = loanRes.ok ? await loanRes.json() : { items: [] }
       const resData = resRes.ok ? await resRes.json() : { items: [] }
 
-      const myLoanIds = new Set(loanData.items?.map((l: any) => l.book.id) || [])
-      const myResIds = new Set(resData.items?.filter((r: any) => r.status === 'PENDING').map((r: any) => r.book.id) || [])
+      const myLoanIds = new Set(loanData.items?.map((l: { book: { id: string } }) => l.book.id) || [])
+      const myResIds = new Set(resData.items?.filter((r: { status: string; book: { id: string } }) => r.status === 'PENDING').map((r: { status: string; book: { id: string } }) => r.book.id) || [])
 
-      const books: BookData[] = (favData.items || []).map((f: any) => {
+      const books: BookData[] = (favData.items || []).map((f: { book: BookData }) => {
         let displayStatus = 'available'
         if (myLoanIds.has(f.book.id)) displayStatus = 'my_loan'
         else if (myResIds.has(f.book.id)) displayStatus = 'my_reservation'
@@ -94,6 +89,13 @@ function Home() {
       setWishBooks(books)
     } catch { setWishlistError(true) }
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchLibrarySummary()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchWishlist()
+  }, [])
 
   const handleSearchSubmit = () => {
     const val = searchInputRef.current?.value.trim()

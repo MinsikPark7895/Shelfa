@@ -4,17 +4,14 @@ import '../styles/Login.css'
 import { publicFetch } from '../api'
 
 function Login() {
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(() => localStorage.getItem('saved_email') || '')
   const [password, setPassword] = useState('')
-  const [saveId, setSaveId] = useState(false)
+  const [saveId, setSaveId] = useState(() => Boolean(localStorage.getItem('saved_email')))
   const navigate = useNavigate()
 
   useEffect(() => {
     const token = localStorage.getItem('access_token')
-    if (token) { navigate('/home'); return }
-
-    const savedEmail = localStorage.getItem("saved_email")
-    if (savedEmail) { setEmail(savedEmail); setSaveId(true) }
+    if (token) navigate('/home')
   }, [])
   const handleLogin = async () => {
     if (!email || !password) {

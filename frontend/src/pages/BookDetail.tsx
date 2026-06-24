@@ -23,8 +23,6 @@ function BookDetail() {
   const [showDevNotice, setShowDevNotice] = useState(false)
   const isAdmin = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} } })().role === 'admin'
 
-  useEffect(() => { fetchBook() }, [id])
-
   const fetchBook = async () => {
     try {
       setLoadError(false)
@@ -40,8 +38,8 @@ function BookDetail() {
 
       const loanData = loanRes.ok ? await loanRes.json() : { items: [] }
       const resData = resRes.ok ? await resRes.json() : { items: [] }
-      const myLoanIds = new Set(loanData.items?.map((l: any) => l.book.id) || [])
-      const myResIds = new Set(resData.items?.filter((r: any) => r.status === 'PENDING').map((r: any) => r.book.id) || [])
+      const myLoanIds = new Set(loanData.items?.map((l: { book: { id: string } }) => l.book.id) || [])
+      const myResIds = new Set(resData.items?.filter((r: { status: string; book: { id: string } }) => r.status === 'PENDING').map((r: { status: string; book: { id: string } }) => r.book.id) || [])
 
       if (myLoanIds.has(id)) setDisplayStatus('my_loan')
       else if (myResIds.has(id)) setDisplayStatus('my_reservation')
@@ -49,6 +47,9 @@ function BookDetail() {
       else setDisplayStatus('borrowed')
     } catch { setLoadError(true) }
   }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { fetchBook() }, [id])
 
   const handleFavoriteToggle = async () => {
     if (isProcessing) return
@@ -76,7 +77,8 @@ function BookDetail() {
 
   if (!book) return <div className="page-container"><div className="top-nav"><span className="logo-text">로딩중...</span></div></div>
 
-  const statusConfig: Record<string, any> = {
+  type StatusConfig = { label: string; badgeClass: string; buttonText: string; buttonDisabled: boolean }
+  const statusConfig: Record<string, StatusConfig> = {
     available: { label: '대출가능', badgeClass: 'badge-available', buttonText: '예약하기', buttonDisabled: false },
     borrowed: { label: '대출불가', badgeClass: 'badge-unavailable', buttonText: '예약불가', buttonDisabled: true },
     my_loan: { label: '대출중', badgeClass: 'badge-myloan', buttonText: '이미 대출한 책입니다', buttonDisabled: true },
