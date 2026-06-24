@@ -128,8 +128,8 @@ async def bulk_register_books(
             publisher=book_data.get("publisher"),
             cover_image_url=book_data.get("cover"),
             description=book_data.get("description"), # 추가: 줄거리 저장
-            shelf_location="UNASSIGNED", # 입고 대기 상태
-            status="IN_STORAGE", # 관리자가 막 등록했으므로 스토리지에 있음
+            shelf_location="UNASSIGNED",
+            status="AVAILABLE",
             vision_marker_id=None
         )
         new_books_to_add.append(new_book)
