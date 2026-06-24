@@ -3,11 +3,19 @@ import { useNavigate } from 'react-router-dom'
 import '../styles/ChatWidget.css'
 import { apiFetch } from '../api'
 
+interface SearchResult {
+  id: string
+  title: string
+  author: string
+  shelf_location: string
+}
+
 interface ChatMessage {
   role: 'user' | 'bot'
   text: string
   recommendedBookId?: string | null
   recommendedBookTitle?: string | null
+  searchResults?: SearchResult[]
   quickReplies?: string[]
   isError?: boolean
   retryMessage?: string
@@ -137,9 +145,81 @@ function ChatWidget() {
     return text
   }
 
+  const handleOtherRecommend = () => {
+    sendMessage('방금 추천해준 책 말고 다른 책 추천해줘')
+  }
+
+  const RESERVE_KEYWORDS = ['예약', '빌릴게', '빌려줘', '대출할게']
+
   const sendMessage = async (text?: string) => {
     const raw = (text ?? input).trim()
     if (!raw || isSending) return
+
+    // 예약 키워드 감지 — 마지막 추천 도서 바로 예약
+    const lastBotWithBook = [...messages].reverse().find(
+      (m) => m.role === 'bot' && m.recommendedBookId
+    )
+    if (RESERVE_KEYWORDS.some((kw) => raw.includes(kw)) && lastBotWithBook?.recommendedBookId) {
+      setMessages((prev) => [...prev, { role: 'user', text: raw }])
+      setInput('')
+      setIsSending(true)
+      try {
+        const res = await apiFetch(`/reservations/${lastBotWithBook.recommendedBookId}`, {
+          method: 'POST',
+        })
+        if (res.ok) {
+          setMessages((prev) => [
+            ...prev,
+            { role: 'bot', text: `"${lastBotWithBook.recommendedBookTitle}" 예약이 완료됐습니다! 로봇이 곧 책을 가져다 드릴게요. 🤖` },
+          ])
+        } else {
+          const err = await res.json()
+          setMessages((prev) => [
+            ...prev,
+            { role: 'bot', text: `예약에 실패했어요. ${err.detail || '다시 시도해주세요.'}` },
+          ])
+        }
+      } catch {
+        setMessages((prev) => [...prev, { role: 'bot', text: '서버 응답이 없어요.', isError: true, retryMessage: raw }])
+      } finally {
+        setIsSending(false)
+      }
+      return
+    }
+
+    // 제목/작가 검색은 AI 없이 검색 API 직접 호출
+    if (searchMode === 'title' || searchMode === 'author') {
+      setMessages((prev) => [...prev, { role: 'user', text: raw }])
+      setInput('')
+      setIsSending(true)
+      try {
+        const res = await apiFetch(`/books/search?query=${encodeURIComponent(raw)}&limit=50`)
+        if (!res.ok) throw new Error()
+        const data = await res.json()
+        const books: SearchResult[] = data.items ?? data ?? []
+        if (books.length === 0) {
+          setMessages((prev) => [
+            ...prev,
+            { role: 'bot', text: `'${raw}'(으)로 검색한 결과가 없습니다.`, quickReplies: ['← 뒤로'] },
+          ])
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'bot',
+              text: `'${raw}'(으)로 검색한 결과 총 ${books.length}권이 있습니다.`,
+              searchResults: books,
+              quickReplies: ['← 뒤로'],
+            },
+          ])
+        }
+      } catch {
+        setMessages((prev) => [...prev, { role: 'bot', text: '검색 중 오류가 발생했어요.', isError: true, retryMessage: raw }])
+      } finally {
+        setIsSending(false)
+      }
+      return
+    }
 
     const message = buildMessage(raw)
     setMessages((prev) => [...prev, { role: 'user', text: raw }])
@@ -229,10 +309,27 @@ function ChatWidget() {
                       🔄 다시 시도
                     </button>
                   )}
-                  {msg.recommendedBookId && (
-                    <button className="chat-book-card" onClick={() => navigate(`/book/${msg.recommendedBookId}`)}>
-                      📖 {msg.recommendedBookTitle}
+                  {msg.searchResults && msg.searchResults.map((book) => (
+                    <button
+                      key={book.id}
+                      className="chat-book-card"
+                      onClick={() => navigate(`/book/${book.id}`)}
+                    >
+                      📖 {book.title}
+                      <span className="chat-book-meta">{book.author} · {book.shelf_location}</span>
                     </button>
+                  ))}
+                  {msg.recommendedBookId && (
+                    <>
+                      <button className="chat-book-card" onClick={() => navigate(`/book/${msg.recommendedBookId}`)}>
+                        📖 {msg.recommendedBookTitle}
+                      </button>
+                      {idx === messages.length - 1 && (
+                        <button className="chat-other-recommend-btn" onClick={handleOtherRecommend} disabled={isSending}>
+                          🔄 다른 책 추천받기
+                        </button>
+                      )}
+                    </>
                   )}
                   {msg.quickReplies && idx === messages.length - 1 && (
                     <div className="chat-quick-replies">

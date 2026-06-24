@@ -175,6 +175,36 @@
   background: #eef3ee;
 }
 
+.chat-book-meta {
+  display: block;
+  font-size: 11px;
+  color: #888;
+  margin-top: 3px;
+}
+
+.chat-other-recommend-btn {
+  display: block;
+  margin-top: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px dashed #4a7c59;
+  background: #fff;
+  color: #4a7c59;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.chat-other-recommend-btn:hover {
+  background: #eef3ee;
+}
+
+.chat-other-recommend-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .chat-input-row {
   display: flex;
   padding: 10px;
