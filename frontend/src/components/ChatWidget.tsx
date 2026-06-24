@@ -16,6 +16,7 @@ interface ChatMessage {
   recommendedBookId?: string | null
   recommendedBookTitle?: string | null
   searchResults?: SearchResult[]
+  showOtherSearch?: boolean
   quickReplies?: string[]
   isError?: boolean
   retryMessage?: string
@@ -50,6 +51,7 @@ function ChatWidget() {
   const [isSending, setIsSending] = useState(false)
   const [menuLevel, setMenuLevel] = useState<MenuLevel>('initial')
   const [searchMode, setSearchMode] = useState<SearchMode>(null)
+  const [lastRecommendKeyword, setLastRecommendKeyword] = useState<string>('')
   const listRef = useRef<HTMLDivElement>(null)
 
   const hasToken = !!localStorage.getItem('access_token')
@@ -138,15 +140,46 @@ function ChatWidget() {
     }
   }
 
-  const buildMessage = (text: string): string => {
-    if (searchMode === 'title') return `제목이 "${text}"인 책 찾아줘`
-    if (searchMode === 'author') return `저자가 "${text}"인 책 찾아줘`
-    if (searchMode === 'category') return `"${text}" 카테고리 책 추천해줘`
-    return text
+  // 검색 결과에서 특정 책 선택 시
+  const handleBookSelect = (book: SearchResult) => {
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', text: book.title },
+      {
+        role: 'bot',
+        text: `'${book.title}' 도서는 ${book.shelf_location} 책장에 있습니다. 자세한 내용은 해당 도서의 상세페이지에서 확인할 수 있습니다.`,
+        recommendedBookId: book.id,
+        recommendedBookTitle: book.title,
+        showOtherSearch: true,
+      },
+    ])
   }
 
+  // 다른 도서 검색하기
+  const handleOtherSearch = () => {
+    setInput('')
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'bot',
+        text: searchMode === 'author' ? '다른 작가명을 입력해주세요.' : '다른 책의 제목을 입력해주세요.',
+        quickReplies: ['← 뒤로'],
+      },
+    ])
+  }
+
+  // 같은 키워드로 다른 도서 추천받기
   const handleOtherRecommend = () => {
-    sendMessage('방금 추천해준 책 말고 다른 책 추천해줘')
+    sendMessage(`${lastRecommendKeyword} 주제로 방금 추천해준 책 말고 다른 책 추천해줘`)
+  }
+
+  // 새 주제로 다시 입력
+  const handleNewTopic = () => {
+    setInput('')
+    setMessages((prev) => [
+      ...prev,
+      { role: 'bot', text: '어떤 분위기나 주제의 책을 찾으시나요? 새로 입력해주세요.', quickReplies: ['← 뒤로'] },
+    ])
   }
 
   const RESERVE_KEYWORDS = ['예약', '빌릴게', '빌려줘', '대출할게']
@@ -187,7 +220,7 @@ function ChatWidget() {
       return
     }
 
-    // 제목/작가 검색은 AI 없이 검색 API 직접 호출
+    // 제목/작가 검색 — AI 없이 검색 API 직접 호출
     if (searchMode === 'title' || searchMode === 'author') {
       setMessages((prev) => [...prev, { role: 'user', text: raw }])
       setInput('')
@@ -200,14 +233,14 @@ function ChatWidget() {
         if (books.length === 0) {
           setMessages((prev) => [
             ...prev,
-            { role: 'bot', text: `'${raw}'(으)로 검색한 결과가 없습니다.`, quickReplies: ['← 뒤로'] },
+            { role: 'bot', text: `'${raw}' 키워드로 검색한 결과가 없습니다.`, quickReplies: ['← 뒤로'] },
           ])
         } else {
           setMessages((prev) => [
             ...prev,
             {
               role: 'bot',
-              text: `'${raw}'(으)로 검색한 결과 총 ${books.length}권이 있습니다.`,
+              text: `'${raw}' 키워드로 검색한 도서는 총 ${books.length}권이 있습니다. 그 중 어떤 책이 궁금하신가요?`,
               searchResults: books,
               quickReplies: ['← 뒤로'],
             },
@@ -221,7 +254,11 @@ function ChatWidget() {
       return
     }
 
-    const message = buildMessage(raw)
+    // 카테고리/추천 — AI 호출
+    const message = searchMode === 'category'
+      ? `"${raw}" 카테고리 책 추천해줘`
+      : raw
+    setLastRecommendKeyword(raw)
     setMessages((prev) => [...prev, { role: 'user', text: raw }])
     setInput('')
     setIsSending(true)
@@ -309,28 +346,47 @@ function ChatWidget() {
                       🔄 다시 시도
                     </button>
                   )}
-                  {msg.searchResults && msg.searchResults.map((book) => (
-                    <button
-                      key={book.id}
-                      className="chat-book-card"
-                      onClick={() => navigate(`/book/${book.id}`)}
-                    >
-                      📖 {book.title}
-                      <span className="chat-book-meta">{book.author} · {book.shelf_location}</span>
-                    </button>
-                  ))}
+
+                  {/* 검색 결과 목록 — 번호 버튼 */}
+                  {msg.searchResults && idx === messages.length - 1 && (
+                    <div className="chat-search-result-list">
+                      {msg.searchResults.map((book, i) => (
+                        <button
+                          key={book.id}
+                          className="chat-search-result-btn"
+                          onClick={() => handleBookSelect(book)}
+                          disabled={isSending}
+                        >
+                          {i + 1}. {book.title}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 단일 책 상세 링크 */}
                   {msg.recommendedBookId && (
                     <>
                       <button className="chat-book-card" onClick={() => navigate(`/book/${msg.recommendedBookId}`)}>
-                        📖 {msg.recommendedBookTitle}
+                        📖 {msg.recommendedBookTitle} 상세페이지 보기
                       </button>
-                      {idx === messages.length - 1 && (
-                        <button className="chat-other-recommend-btn" onClick={handleOtherRecommend} disabled={isSending}>
-                          🔄 다른 책 추천받기
+                      {idx === messages.length - 1 && msg.showOtherSearch && (
+                        <button className="chat-other-recommend-btn" onClick={handleOtherSearch} disabled={isSending}>
+                          🔍 다른 도서 검색하기
                         </button>
+                      )}
+                      {idx === messages.length - 1 && !msg.showOtherSearch && (
+                        <>
+                          <button className="chat-other-recommend-btn" onClick={handleOtherRecommend} disabled={isSending}>
+                            🔄 다른 도서 추천받기
+                          </button>
+                          <button className="chat-other-recommend-btn" onClick={handleNewTopic} disabled={isSending}>
+                            🔎 다른 주제로 찾기
+                          </button>
+                        </>
                       )}
                     </>
                   )}
+
                   {msg.quickReplies && idx === messages.length - 1 && (
                     <div className="chat-quick-replies">
                       {msg.quickReplies.map((reply) => (

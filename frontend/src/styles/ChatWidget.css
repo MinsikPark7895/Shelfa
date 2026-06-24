@@ -182,6 +182,34 @@
   margin-top: 3px;
 }
 
+.chat-search-result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.chat-search-result-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #d8d8d8;
+  background: #fafafa;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.chat-search-result-btn:hover {
+  background: #eef3ee;
+}
+
+.chat-search-result-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .chat-other-recommend-btn {
   display: block;
   margin-top: 6px;
