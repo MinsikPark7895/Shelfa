@@ -37,14 +37,20 @@ async def search_book_by_isbn(isbn: str):
         "itemIdType": "ISBN13",
         "ItemId": isbn,
         "output": "js",
-        "Version": "20131101"
+        "Version": "20131101",
+        "OptResult": "fulldescription"
     }
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, params=params)
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("item"):
-                return data["item"][0]
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url, params=params)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("item"):
+                    return data["item"][0]
+            print(f"[Aladin] ISBN {isbn} 조회 실패 - status: {response.status_code}, body: {response.text[:200]}")
+            return None
+    except Exception as e:
+        print(f"[Aladin] ISBN {isbn} 요청 에러: {e}")
         return None
 

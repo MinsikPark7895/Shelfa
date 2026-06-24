@@ -120,10 +120,22 @@ function AdminPage() {
         body: JSON.stringify({ isbns: isbnList }),
       })
       if (res.ok) {
-        alert('등록 완료')
-        setBookStep('idle')
-        setIsbnList([])
-        setBookCount('')
+        const data = await res.json()
+        const success = data.success_count ?? 0
+        const failed: string[] = data.failed_isbns ?? []
+        if (success === 0 && failed.length > 0) {
+          alert(`등록 실패\n총 ${failed.length}권을 알라딘에서 찾지 못했습니다.\n실패 ISBN: ${failed.join(', ')}`)
+        } else if (failed.length > 0) {
+          alert(`${success}권 등록 완료\n${failed.length}권 실패: ${failed.join(', ')}`)
+          setBookStep('idle')
+          setIsbnList([])
+          setBookCount('')
+        } else {
+          alert(`${success}권 등록 완료`)
+          setBookStep('idle')
+          setIsbnList([])
+          setBookCount('')
+        }
       } else {
         const err = await res.json().catch(() => ({}))
         alert(err?.detail || '등록에 실패했습니다.')
