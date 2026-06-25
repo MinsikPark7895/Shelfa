@@ -11,7 +11,7 @@ services:
     network_mode: host # ROS 2 DDS 통신을 위해 호스트 네트워크 사용 권장
     environment:
       - ROS_DOMAIN_ID=0
-      - MQTT_BROKER=shelfa.co.kr  # GCP 서버 MQTT 브로커 주소
+      - SHELFA_MQTT_BROKER=shelfa.co.kr  # GCP 서버 MQTT 브로커 주소
       - MQTT_PORT=1883
     volumes:
       - /dev:/dev # 로봇 시리얼 연결, 웹캠 등 USB 장치 마운트
