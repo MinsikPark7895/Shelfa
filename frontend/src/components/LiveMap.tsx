@@ -101,9 +101,7 @@ const LiveMap: React.FC = () => {
           alt="도서관 지도" 
           className="livemap-image"
           style={{ width: `${mapWidth}px`, height: `${mapHeight}px` }} 
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = 'none';
-          }}
+
         />
         {/* 로봇 마커 */}
         <div 
