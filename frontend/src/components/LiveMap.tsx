@@ -19,11 +19,12 @@ const LiveMap: React.FC = () => {
 
   useEffect(() => {
     // MQTT 연결 옵션 (GCP 클라우드 접속)
+    const isSecure = window.location.protocol === 'https:';
     const options: mqtt.IClientOptions = {
       username: import.meta.env.VITE_MQTT_USER || '',
       password: import.meta.env.VITE_MQTT_PASSWORD || '',
       reconnectPeriod: 1000,
-      protocol: 'ws',
+      protocol: isSecure ? 'wss' : 'ws',
     };
 
     const envUrl = import.meta.env.VITE_MQTT_BROKER_URL;
