@@ -26,7 +26,12 @@ const LiveMap: React.FC = () => {
       protocol: 'ws',
     };
 
-    const brokerUrl = import.meta.env.VITE_MQTT_BROKER_URL || 'ws://localhost:9001';
+    const envUrl = import.meta.env.VITE_MQTT_BROKER_URL;
+    const brokerUrl = envUrl
+      ? envUrl
+      : window.location.protocol === 'https:'
+        ? 'wss://' + window.location.hostname + '/mqtt'
+        : 'ws://localhost:9001';
     const client = mqtt.connect(brokerUrl, options);
 
     client.on('connect', () => {
