@@ -102,7 +102,7 @@ const LiveMap: React.FC = () => {
           className="livemap-image"
           style={{ width: `${mapWidth}px`, height: `${mapHeight}px` }} 
           onError={(e) => {
-            (e.target as HTMLImageElement).src = '/assets/qr-placeholder.png'; // 이미지가 없을 경우 플레이스홀더
+            (e.target as HTMLImageElement).style.display = 'none';
           }}
         />
         {/* 로봇 마커 */}
