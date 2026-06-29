@@ -11,14 +11,26 @@
 
 ---
 
+## 👥 팀원 소개 (Team Members)
+
+| 이름 | 역할 | 담당 영역 |
+|---|---|---|
+| **박민식** | 팀장 | Cloud-to-Edge 시스템 통합, FastAPI 백엔드 API 설계, SLAM/Nav2 자율주행, AI 파이프라인 연동, MQTT 하이브리드 통신망 구축 |
+| **백승호** | 부팀장 | 두산 로봇팔(E0509) 제어, 그리퍼 TCP 브릿지 설계, ArUco 기반 정밀 정렬, 그리퍼 하드웨어 개조 |
+| **김제원** | 팀원 | YOLO OBB 도서 감지 모델 학습, OCR 파이프라인 구축, Fuzzy Matching, Hand-Eye Calibration |
+| **모윤근** | 팀원 | React 프론트엔드 개발,  PostgreSQL DB 연동, 도서 예약 시스템 구현 |
+
+---
+
 ## 🌟 주요 기능 (Key Features)
 
 | 구분 | 기능 |
 |---|---|
-| 🌐 **웹** | 사용자 도서 예약 및 관리 (FastAPI + React) |
-| 🤖 **자율주행** | ROS 2 기반 AMR 자율주행 및 도서관 매핑 (Nav2, SLAM) |
-| 👁️ **비전** | ArUco 마커 + RealSense 카메라를 이용한 정밀 비전 정렬 (OpenCV) |
-| 🦾 **로봇팔** | 두산 로봇팔(E0509) + 그리퍼를 이용한 무인 도서 파지 및 보관함 적재 |
+| 🌐 **웹** | 사용자 도서 예약 및 관리 (FastAPI + React + PostgreSQL) |
+| 🤖 **자율주행** | ROS 2 기반 AMR 자율주행 및 도서관 매핑 (Nav2, SLAM Toolbox) |
+| 🧠 **AI 비전** | YOLO OBB 도서 감지 + OCR Title Crop + Fuzzy Matching 도서 인식 파이프라인 |
+| 📐 **정밀 정렬** | Hand-Eye Calibration + ArUco 마커 + RealSense D435 기반 mm 단위 위치 보정 |
+| 🦾 **로봇팔** | 두산 E0509 + 커스텀 그리퍼 + Modbus TCP 양방향 통신 + Safe Grasp Action |
 | ☁️ **인프라** | GitHub Actions CI/CD, GCP Docker 자동 배포, MQTT 하이브리드 통신망 |
 
 ---
@@ -297,7 +309,122 @@ Shelfa/
 
 ---
 
+## 🧠 AI 비전 파이프라인 (AI Vision Pipeline)
+
+> 담당: **김제원**
+
+대상 도서를 자동으로 인식하는 3단계 파이프라인입니다.
+
+### 1단계: YOLO OBB 도서 감지
+
+일반 바운딩박스(AABB)는 비스듬히 꽂힌 책을 정확히 탐지하지 못하는 한계가 있어, **YOLO OBB(회전 바운딩박스)** 를 도입했습니다. OpenCV `minAreaRect()`를 통해 폴리곤 라벨 4개 꼭짓점을 **중심+크기+각도** 형태로 변환하여 학습했습니다.
+
+| 구분 | 이미지 수 |
+|---|---|
+| Train (70%) | 1,024장 |
+| Valid (20%) | 293장 |
+| Test (10%) | 146장 |
+
+### 2단계: OCR 도서 제목 인식
+
+- **Title Crop:** 책등 전체를 OCR하면 저자명/출판사 등 불필요한 텍스트가 혼잡합니다. 책등 **중앙의 가장 길게 이어진 글자 덩어리**만 잘라내어 오직 제목만 OCR 수행합니다.
+- **Fuzzy Matching:** OCR 결과와 목표 제목 간 **문자열 유사도 + 글자 포함 비율 복합 점수화** 방식으로 오인식 내성을 크게 낮췄습니다.
+- **Early Stop:** 임계값 이상 유사도 확인 즉시 종료하여 불필요한 탐색을 생략합니다.
+- **Fallback:** 애매한 경우 OBB Crop OCR로 재확인하여 오매칭 위험을 완화합니다.
+
+### 3단계: 3D 좌표 변환 (Hand-Eye Calibration)
+
+RealSense 카메라로 찾은 도서의 2D 위치를 로봇팔이 실제로 이동할 수 있는 3D 좌표로 변환합니다.
+
+```
+RealSense (camera_color_optical_frame)
+→ Hand-Eye Calibration (T_link_6_camera)
+→ TF2 변환 (base_link ↔ link_6)
+→ 로봇팔 접근 좌표 추출
+```
+
+5가지 Hand-Eye Calibration 방법을 실험적으로 비교하여 가장 오차가 작은 **ANDREFF 방식(Translation RMSE 1.165mm)** 을 최종 선정했습니다.
+
+| 방법 | Translation RMSE |
+|---|---|
+| TSAI | 16.270mm |
+| PARK | 1.259mm |
+| HORAUD | 1.248mm |
+| **ANDREFF** | **1.165mm ✅ 최종 선정** |
+| DANIILIDIS | 1.306mm |
+
+---
+
+## 🦾 로봇팔 제어 시스템 (Robot Arm Control)
+
+> 담당: **백승호**
+
+### 그리퍼 TCP 브릿지 아키텍처
+
+기존 제어 방식(DRL 스크립트 실행, Write만 가능)에서 **TCP 양방향 통신 방식**으로 전환하여 실제 파지 여부를 실시간으로 판단할 수 있게 되었습니다.
+
+```
+[기존] ROS 2 노드 → DRL 스크립트 → ROBOTIS 그리퍼 (Write only, Read 불가)
+[변경] gripper_service_node ↔ 두산 컨트롤러 (DRL TCP Server) ↔ RH-P12-RN (RS-485 Modbus)
+       ├─ Write: 구동 명령 전송
+       └─ Read:  실시간 상태 조회 (위치/전류/토크)
+```
+
+### ROS 2 인터페이스
+
+| 인터페이스 | 타입 | 설명 |
+|---|---|---|
+| `/gripper_service/state` | Topic | 위치/전류/속도/토크/이동 여부 실시간 발행 |
+| `/gripper_service/set_position` | Service | 열기/닫기/특정 위치 이동 |
+| `/gripper_service/safe_grasp` | Action | 닫기 → 전류 Read → 증가 확인 → 파지 판단 |
+
+```bash
+# Safe Grasp 액션 호출 예시
+ros2 action send_goal /gripper_service/safe_grasp \
+  dsr_gripper_tcp_interfaces/action/SafeGrasp \
+  "{target_position: 700, max_current: 400, current_delta_threshold: 120, timeout_sec: 8.0}"
+```
+
+### 실제 책 뽑기 세부 단계
+
+| 단계 | 내용 |
+|---|---|
+| ① | ArUco 마커 기반 책장 정렬 (Marker 검출 → Pose 계산 → 이동 → 회전 → XYZ 보정) |
+| ② | YOLO OBB + OCR으로 목표 도서 상세 위치 파악 |
+| ③ | 20cm 오프셋 접근 → 좌우 정렬 → 그리퍼 폭 조절 |
+| ④ | Safe Grasp 액션으로 책 파지 (전류 기반 파지 성공 판단) |
+| ⑤ | 로봇팔 안전 자세 복귀 → 임시 보관함 적재 |
+
+### 그리퍼 하드웨어 개조
+
+기존 그리퍼는 얇고 세로로 세워진 책 파지에 적합하지 않아, **쐐기형 교체 부품을 직접 3D 모델링/설계**하여 기존 그리퍼에 결합했습니다.
+
+---
+
+## 🚀 한계점 및 향후 개선 방안
+
+### 현재 한계점
+
+| 한계점 | 내용 |
+|---|---|
+| 책장 환경 | 실제 도서관의 다양한 책장 환경(빠진 책/기울어진 책 등)이 고려되지 않음 |
+| 반납 처리 | 사용자가 뒷집에서 꽂다가 다시 컨테이너에 넣는 도서 반납 기능 미구현 |
+| 단일 예약 | 동시에 한 권만 예약 가능 (다수 예약 처리 미지원) |
+| 수령 확인 | 사용자가 실제로 책을 수령했는지 시스템이 직접 파악 불가 |
+
+### 개선 방안
+
+| 개선 분야 | 내용 |
+|---|---|
+| 파지 심화 | 모방학습(IL) 또는 강화학습(RL) 기반 주머니준 파지 삽입 알고리즘 적용 |
+| 책 정리 | 책 삽입 및 서가 자동 정리 기능 추가 |
+| 다수 예약 | 동시 다수 예약 요청 및 큐 처리 시스템 구현 |
+| 수령 확인 | 센서 기반(순간 감지, 무게 센서 등) 책 수령 확인 기능 추가 |
+
+---
+
 ## 🛠️ 트러블슈팅 (Troubleshooting)
+
 
 ### ❌ MQTT 브로커가 무한 재시작됨
 **증상:** `docker logs shelfa_mqtt`에서 `Unable to open pwfile "/mosquitto/config/passwd"` 반복
