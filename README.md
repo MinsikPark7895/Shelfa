@@ -311,8 +311,6 @@ Shelfa/
 
 ## 🧠 AI 비전 파이프라인 (AI Vision Pipeline)
 
-> 담당: **김제원**
-
 대상 도서를 자동으로 인식하는 3단계 파이프라인입니다.
 
 ### 1단계: YOLO OBB 도서 감지
@@ -356,8 +354,6 @@ RealSense (camera_color_optical_frame)
 ---
 
 ## 🦾 로봇팔 제어 시스템 (Robot Arm Control)
-
-> 담당: **백승호**
 
 ### 그리퍼 TCP 브릿지 아키텍처
 
